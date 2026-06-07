@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Loader2,
-  Plus,
-  Pencil,
-  Star,
-  StarOff,
-  EyeOff,
-  Search,
-  Ban,
-} from "lucide-react";
+import { Loader2, Plus, Pencil, Star, EyeOff, Search, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
@@ -265,4 +256,4 @@ function Section({
   );
 }
 
-export { StarOff };
+
