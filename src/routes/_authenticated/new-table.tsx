@@ -228,7 +228,9 @@ function NewTable() {
             <DialogTitle>
               {picker === "takeaway"
                 ? "New takeaway order"
-                : `Start Table ${picker && picker !== "takeaway" ? picker.code : ""}`}
+                : picker
+                  ? `Start Table ${picker.code}`
+                  : ""}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
