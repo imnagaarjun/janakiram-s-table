@@ -21,6 +21,7 @@ import { Route as AuthenticatedNewTableRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
 import { Route as AuthenticatedMenuRouteImport } from './routes/_authenticated/menu'
 import { Route as AuthenticatedKdsRouteImport } from './routes/_authenticated/kds'
+import { Route as AuthenticatedOrderSessionIdRouteImport } from './routes/_authenticated/order.$sessionId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -81,6 +82,12 @@ const AuthenticatedKdsRoute = AuthenticatedKdsRouteImport.update({
   path: '/kds',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedOrderSessionIdRoute =
+  AuthenticatedOrderSessionIdRouteImport.update({
+    id: '/order/$sessionId',
+    path: '/order/$sessionId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/stock': typeof AuthenticatedStockRoute
   '/tables': typeof AuthenticatedTablesRoute
   '/waiters': typeof AuthenticatedWaitersRoute
+  '/order/$sessionId': typeof AuthenticatedOrderSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -107,6 +115,7 @@ export interface FileRoutesByTo {
   '/stock': typeof AuthenticatedStockRoute
   '/tables': typeof AuthenticatedTablesRoute
   '/waiters': typeof AuthenticatedWaitersRoute
+  '/order/$sessionId': typeof AuthenticatedOrderSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -122,6 +131,7 @@ export interface FileRoutesById {
   '/_authenticated/stock': typeof AuthenticatedStockRoute
   '/_authenticated/tables': typeof AuthenticatedTablesRoute
   '/_authenticated/waiters': typeof AuthenticatedWaitersRoute
+  '/_authenticated/order/$sessionId': typeof AuthenticatedOrderSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/stock'
     | '/tables'
     | '/waiters'
+    | '/order/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/stock'
     | '/tables'
     | '/waiters'
+    | '/order/$sessionId'
   id:
     | '__root__'
     | '/'
@@ -164,6 +176,7 @@ export interface FileRouteTypes {
     | '/_authenticated/stock'
     | '/_authenticated/tables'
     | '/_authenticated/waiters'
+    | '/_authenticated/order/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -258,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKdsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/order/$sessionId': {
+      id: '/_authenticated/order/$sessionId'
+      path: '/order/$sessionId'
+      fullPath: '/order/$sessionId'
+      preLoaderRoute: typeof AuthenticatedOrderSessionIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -271,6 +291,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedStockRoute: typeof AuthenticatedStockRoute
   AuthenticatedTablesRoute: typeof AuthenticatedTablesRoute
   AuthenticatedWaitersRoute: typeof AuthenticatedWaitersRoute
+  AuthenticatedOrderSessionIdRoute: typeof AuthenticatedOrderSessionIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -283,6 +304,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedStockRoute: AuthenticatedStockRoute,
   AuthenticatedTablesRoute: AuthenticatedTablesRoute,
   AuthenticatedWaitersRoute: AuthenticatedWaitersRoute,
+  AuthenticatedOrderSessionIdRoute: AuthenticatedOrderSessionIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
