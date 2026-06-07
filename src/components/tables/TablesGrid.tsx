@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Settings2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -40,6 +41,7 @@ interface Waiter {
 }
 
 export function TablesGrid() {
+  const nav = useNavigate();
   const { profile, hasRole, roles } = useAuth();
   const restaurantId = profile?.restaurant_id;
   const [tables, setTables] = useState<DiningTable[]>([]);
@@ -195,9 +197,29 @@ export function TablesGrid() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {filtered.map((t) => (
-            <div
+            <button
               key={t.id}
-              className={`rounded-2xl p-4 min-h-[110px] flex flex-col justify-between shadow-sm border ${STATUS_CLASSES[t.status]}`}
+              type="button"
+              onClick={async () => {
+                if (t.status === "free" || t.status === "inactive") return;
+                const { data } = await db
+                  .from("order_sessions")
+                  .select("id,status")
+                  .eq("table_code", t.code)
+                  .in("status", ["open", "bill_requested"])
+                  .order("opened_at", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (!data) return;
+                if (data.status === "bill_requested") {
+                  nav({ to: "/bill/$sessionId", params: { sessionId: data.id } });
+                } else {
+                  nav({ to: "/order/$sessionId", params: { sessionId: data.id } });
+                }
+              }}
+              className={`text-left rounded-2xl p-4 min-h-[110px] flex flex-col justify-between shadow-sm border ${STATUS_CLASSES[t.status]} ${
+                t.status === "free" || t.status === "inactive" ? "" : "active:scale-[0.98] transition-transform"
+              }`}
             >
               <div className="flex items-start justify-between">
                 <div className="text-2xl font-extrabold tracking-tight">{t.code}</div>
@@ -209,7 +231,7 @@ export function TablesGrid() {
                 <span>{t.section ? `Sec ${t.section}` : "—"}</span>
                 <span>{t.seats} seats</span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
