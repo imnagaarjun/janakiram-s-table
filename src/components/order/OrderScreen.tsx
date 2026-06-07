@@ -479,41 +479,71 @@ function DraftBody({
           )}
         </section>
 
-        {sentKots.length > 0 && (
-          <section>
-            <div className="text-xs font-semibold text-muted-foreground mb-2">Sent</div>
-            <div className="space-y-2">
-              {sentKots.map((k) => {
-                const lines = sentLines.filter((l) => l.kot_id === k.id);
-                return (
-                  <div key={k.id} className="rounded-lg border border-border p-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-xs font-bold">K-{String(k.kot_no).padStart(4, "0")}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {new Date(k.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        {sentKots.length > 0 && (() => {
+          const agg = new Map<string, number>();
+          sentLines.forEach((l) => {
+            if (l.status === "void") return;
+            agg.set(l.menu_item_id, (agg.get(l.menu_item_id) ?? 0) + Number(l.qty));
+          });
+          const totalQty = Array.from(agg.values()).reduce((s, n) => s + n, 0);
+          return (
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-semibold text-muted-foreground">
+                  Previously Ordered ({sentKots.length} KOT{sentKots.length > 1 ? "s" : ""} · {totalQty} item{totalQty !== 1 ? "s" : ""})
+                </div>
+              </div>
+
+              {/* Aggregated summary across all sent KOTs */}
+              {agg.size > 0 && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-2 mb-2">
+                  <div className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wide">Running total on this table</div>
+                  <div className="space-y-0.5">
+                    {Array.from(agg.entries()).map(([mid, q]) => (
+                      <div key={mid} className="flex items-center justify-between text-sm">
+                        <span className="truncate">{itemsById.get(mid)?.name ?? "—"}</span>
+                        <span className="font-bold tabular-nums ml-2">× {q}</span>
                       </div>
-                    </div>
-                    {lines.map((l) => {
-                      const isVoid = l.status === "void";
-                      return (
-                        <div key={l.id} className="flex items-center justify-between text-sm py-1">
-                          <span className={isVoid ? "line-through text-muted-foreground" : ""}>
-                            {l.qty} × {itemsById.get(l.menu_item_id)?.name ?? "—"}
-                          </span>
-                          {!isVoid && (
-                            <Button variant="ghost" size="sm" className="h-7 text-danger" onClick={() => onVoid(l)}>
-                              Void
-                            </Button>
-                          )}
-                        </div>
-                      );
-                    })}
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+                </div>
+              )}
+
+              {/* Per-KOT breakdown */}
+              <div className="space-y-2">
+                {sentKots.map((k) => {
+                  const lines = sentLines.filter((l) => l.kot_id === k.id);
+                  return (
+                    <div key={k.id} className="rounded-lg border border-border p-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-xs font-bold">K-{String(k.kot_no).padStart(4, "0")}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          {new Date(k.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </div>
+                      {lines.map((l) => {
+                        const isVoid = l.status === "void";
+                        return (
+                          <div key={l.id} className="flex items-center justify-between text-sm py-1">
+                            <span className={isVoid ? "line-through text-muted-foreground" : ""}>
+                              {l.qty} × {itemsById.get(l.menu_item_id)?.name ?? "—"}
+                              {l.note && <span className="text-[11px] text-muted-foreground ml-1">"{l.note}"</span>}
+                            </span>
+                            {!isVoid && (
+                              <Button variant="ghost" size="sm" className="h-7 text-danger" onClick={() => onVoid(l)}>
+                                Void
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })()}
       </div>
 
       <div className="border-t p-3 flex items-center gap-2 bg-surface">
