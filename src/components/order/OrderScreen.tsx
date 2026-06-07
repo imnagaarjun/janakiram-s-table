@@ -64,6 +64,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [kotNote, setKotNote] = useState("");
   const [sending, setSending] = useState(false);
   const [voidLine, setVoidLine] = useState<SentLine | null>(null);
+  const [cartOpen, setCartOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [sRes, mRes, cRes, rRes, lRes, kRes, kiRes] = await Promise.all([
