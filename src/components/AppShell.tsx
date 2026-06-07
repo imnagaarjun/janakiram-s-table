@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutGrid, Plus, BookOpen, BarChart3, MoreHorizontal, ChefHat, Settings } from "lucide-react";
+import { LayoutGrid, Plus, BookOpen, BarChart3, MoreHorizontal, ChefHat, Settings, Boxes } from "lucide-react";
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusPill } from "@/components/StatusPill";
@@ -67,10 +67,23 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+          {(roles.includes("admin") || roles.includes("manager")) && (
+            <Link
+              to="/stock"
+              className={`mt-auto flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
+                pathname.startsWith("/stock")
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-accent text-foreground"
+              }`}
+            >
+              <Boxes className="h-5 w-5" />
+              <span>Daily Stock</span>
+            </Link>
+          )}
           {roles.includes("admin") && (
             <Link
               to="/settings"
-              className={`mt-auto flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
+              className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
                 pathname.startsWith("/settings")
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-accent text-foreground"
