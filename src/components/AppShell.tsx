@@ -19,7 +19,7 @@ const ALL_NAV: NavItem[] = [
   { to: "/new-table", label: "New Table", icon: Plus, roles: ["admin", "manager", "waiter"] },
   { to: "/menu", label: "Menu", icon: BookOpen, roles: ["admin", "manager", "waiter", "cashier"] },
   { to: "/kds", label: "KDS", icon: ChefHat, roles: ["admin", "manager", "kitchen", "cashier"] },
-  { to: "/reports", label: "Reports", icon: BarChart3, roles: ["admin", "manager"] },
+  { to: "/reports", label: "Reports", icon: BarChart3, roles: ["admin", "manager", "cashier", "waiter"] },
   { to: "/more", label: "More", icon: MoreHorizontal, roles: ["admin", "manager", "cashier", "waiter", "kitchen"] },
 ];
 
@@ -35,7 +35,7 @@ function visibleNav(roles: AppRole[]): NavItem[] {
     return ALL_NAV.filter((n) => ["/tables", "/menu", "/kds", "/reports", "/more"].includes(n.to));
   }
   // Waiter
-  return ALL_NAV.filter((n) => ["/tables", "/new-table", "/menu", "/more"].includes(n.to));
+  return ALL_NAV.filter((n) => ["/tables", "/new-table", "/menu", "/reports", "/more"].includes(n.to));
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
