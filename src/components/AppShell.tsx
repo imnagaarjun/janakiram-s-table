@@ -4,6 +4,7 @@ import { LayoutGrid, Plus, BookOpen, BarChart3, MoreHorizontal, ChefHat, Setting
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusPill } from "@/components/StatusPill";
+import { WaiterNotifier } from "@/components/WaiterNotifier";
 import type { AppRole } from "@/lib/types";
 
 interface NavItem {
@@ -47,6 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-screen flex bg-background">
         <StatusPill />
+        <WaiterNotifier />
         <aside className="w-56 shrink-0 border-r bg-surface flex flex-col p-3 gap-1">
           <div className="px-2 py-3 mb-2">
             <div className="text-sm font-bold text-foreground">Hotel Sri Janakiram</div>
@@ -116,6 +118,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <StatusPill />
+      <WaiterNotifier />
       <main className="flex-1 overflow-y-auto pb-20">{children}</main>
       <nav
         className="fixed bottom-0 inset-x-0 z-40 border-t bg-surface flex justify-around items-stretch"

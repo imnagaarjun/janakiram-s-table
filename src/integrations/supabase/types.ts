@@ -916,6 +916,7 @@ export type Database = {
     }
     Functions: {
       available_qty: { Args: { _menu_item_id: string }; Returns: number }
+      bump_kot: { Args: { _kot_id: string }; Returns: Json }
       business_day_start: { Args: { _rid: string }; Returns: string }
       close_business_day: { Args: { _decisions: Json }; Returns: undefined }
       current_restaurant_id: { Args: never; Returns: string }
