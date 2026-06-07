@@ -362,7 +362,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
             ? `${voidLine.qty} × ${itemsById.get(voidLine.menu_item_id)?.name ?? "item"}`
             : ""
         }
-        onConfirm={(r, n, pin) => voidLine && confirmVoid(voidLine, r, n, pin)}
+        onConfirm={(r, n, pin) => { if (voidLine) return confirmVoid(voidLine, r, n, pin); }}
       />
     </div>
   );
