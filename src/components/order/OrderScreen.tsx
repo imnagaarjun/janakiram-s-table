@@ -217,6 +217,26 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
             {sentKots.length} KOT sent · {sentLines.filter((l) => l.status !== "void").length} active lines
           </div>
         </div>
+        {sentLines.filter((l) => l.status !== "void").length > 0 && (
+          <Button
+            variant={session.status === "bill_requested" ? "default" : "outline"}
+            size="sm"
+            onClick={async () => {
+              if (session.status === "bill_requested") {
+                nav({ to: "/bill/$sessionId", params: { sessionId } });
+                return;
+              }
+              const { error } = await supabase.rpc("request_bill", { _session_id: sessionId });
+              if (error) toast.error(error.message);
+              else {
+                toast.success("Bill requested — cashier notified");
+                setSession((s) => (s ? { ...s, status: "bill_requested" } : s));
+              }
+            }}
+          >
+            {session.status === "bill_requested" ? "Open Bill" : "Request Bill"}
+          </Button>
+        )}
       </header>
 
       <div className={`flex-1 flex ${isTablet ? "flex-row" : "flex-col"} overflow-hidden`}>
