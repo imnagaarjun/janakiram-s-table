@@ -41,6 +41,7 @@ interface Waiter {
 }
 
 export function TablesGrid() {
+  const nav = useNavigate();
   const { profile, hasRole, roles } = useAuth();
   const restaurantId = profile?.restaurant_id;
   const [tables, setTables] = useState<DiningTable[]>([]);
