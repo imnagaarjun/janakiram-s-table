@@ -281,12 +281,12 @@ function Allocations() {
           return (
             <div key={t.id} className="rounded-xl border border-border bg-surface p-3 flex items-center gap-3 shadow-sm">
               <div className="w-12 font-bold text-lg">{t.code}</div>
-              <Select value={a?.waiter_id ?? ""} onValueChange={(v) => setWaiterFor(t.code, v)}>
+              <Select value={a?.waiter_id ?? "__none"} onValueChange={(v) => setWaiterFor(t.code, v === "__none" ? "" : v)}>
                 <SelectTrigger className="flex-1 min-h-[44px]">
                   <SelectValue placeholder="Unassigned" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— Unassigned —</SelectItem>
+                  <SelectItem value="__none">— Unassigned —</SelectItem>
                   {waiters.map((w) => (
                     <SelectItem key={w.id} value={w.id}>
                       {w.name}
