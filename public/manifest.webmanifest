@@ -1,0 +1,14 @@
+{
+  "name": "Hotel Sri Janakiram",
+  "short_name": "HSJ",
+  "description": "Restaurant management for Hotel Sri Janakiram",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "any", "type": "image/x-icon" }
+  ]
+}
