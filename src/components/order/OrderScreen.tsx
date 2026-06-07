@@ -167,6 +167,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     toast.success(`KOT K-${String((data as { kot_no: number }).kot_no).padStart(4, "0")} sent`);
     setDraft([]);
     setKotNote("");
+    setCartOpen(false);
     load();
   }
 
