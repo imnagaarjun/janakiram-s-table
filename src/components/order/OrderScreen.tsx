@@ -64,6 +64,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [kotNote, setKotNote] = useState("");
   const [sending, setSending] = useState(false);
   const [voidLine, setVoidLine] = useState<SentLine | null>(null);
+  const [cartOpen, setCartOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [sRes, mRes, cRes, rRes, lRes, kRes, kiRes] = await Promise.all([
@@ -166,6 +167,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     toast.success(`KOT K-${String((data as { kot_no: number }).kot_no).padStart(4, "0")} sent`);
     setDraft([]);
     setKotNote("");
+    setCartOpen(false);
     load();
   }
 
@@ -334,7 +336,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
 
       {/* Phone: floating cart */}
       {!isTablet && (
-        <Sheet>
+        <Sheet open={cartOpen} onOpenChange={setCartOpen}>
           <SheetTrigger asChild>
             <Button
               className="fixed right-3 z-30 h-14 rounded-full shadow-lg flex items-center gap-1.5"
@@ -485,64 +487,57 @@ function DraftBody({
         </section>
 
         {sentKots.length > 0 && (() => {
-          const agg = new Map<string, number>();
+          // Group sent lines by menu item — one row per item, with KOT chips + per-line void access
+          const byItem = new Map<string, SentLine[]>();
           sentLines.forEach((l) => {
-            if (l.status === "void") return;
-            agg.set(l.menu_item_id, (agg.get(l.menu_item_id) ?? 0) + Number(l.qty));
+            const arr = byItem.get(l.menu_item_id) ?? [];
+            arr.push(l);
+            byItem.set(l.menu_item_id, arr);
           });
-          const totalQty = Array.from(agg.values()).reduce((s, n) => s + n, 0);
+          const kotNoById = new Map(sentKots.map((k) => [k.id, k.kot_no]));
+          const totalQty = sentLines.filter((l) => l.status !== "void").reduce((s, l) => s + Number(l.qty), 0);
           return (
             <section>
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-semibold text-muted-foreground">
-                  Previously Ordered ({sentKots.length} KOT{sentKots.length > 1 ? "s" : ""} · {totalQty} item{totalQty !== 1 ? "s" : ""})
-                </div>
+              <div className="text-xs font-semibold text-muted-foreground mb-2">
+                Previously Ordered ({sentKots.length} KOT{sentKots.length > 1 ? "s" : ""} · {totalQty} item{totalQty !== 1 ? "s" : ""})
               </div>
-
-              {/* Aggregated summary across all sent KOTs */}
-              {agg.size > 0 && (
-                <div className="rounded-lg border border-primary/30 bg-primary/5 p-2 mb-2">
-                  <div className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wide">Running total on this table</div>
-                  <div className="space-y-0.5">
-                    {Array.from(agg.entries()).map(([mid, q]) => (
-                      <div key={mid} className="flex items-center justify-between text-sm">
-                        <span className="truncate">{itemsById.get(mid)?.name ?? "—"}</span>
-                        <span className="font-bold tabular-nums ml-2">× {q}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Per-KOT breakdown */}
-              <div className="space-y-2">
-                {sentKots.map((k) => {
-                  const lines = sentLines.filter((l) => l.kot_id === k.id);
+              <div className="rounded-lg border border-primary/30 bg-primary/5 divide-y divide-primary/10">
+                {Array.from(byItem.entries()).map(([mid, lines]) => {
+                  const activeQty = lines.filter((l) => l.status !== "void").reduce((s, l) => s + Number(l.qty), 0);
+                  const activeLines = lines.filter((l) => l.status !== "void");
+                  const kotChips = Array.from(new Set(activeLines.map((l) => kotNoById.get(l.kot_id)))).filter(Boolean);
                   return (
-                    <div key={k.id} className="rounded-lg border border-border p-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="text-xs font-bold">K-{String(k.kot_no).padStart(4, "0")}</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {new Date(k.sent_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </div>
-                      </div>
-                      {lines.map((l) => {
-                        const isVoid = l.status === "void";
-                        return (
-                          <div key={l.id} className="flex items-center justify-between text-sm py-1">
-                            <span className={isVoid ? "line-through text-muted-foreground" : ""}>
-                              {l.qty} × {itemsById.get(l.menu_item_id)?.name ?? "—"}
-                              {l.note && <span className="text-[11px] text-muted-foreground ml-1">"{l.note}"</span>}
-                            </span>
-                            {!isVoid && (
-                              <Button variant="ghost" size="sm" className="h-7 text-danger" onClick={() => onVoid(l)}>
-                                Void
-                              </Button>
-                            )}
+                    <details key={mid} className="group">
+                      <summary className="flex items-center justify-between p-2 cursor-pointer list-none">
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-sm font-semibold truncate ${activeQty === 0 ? "line-through text-muted-foreground" : ""}`}>
+                            {itemsById.get(mid)?.name ?? "—"}
                           </div>
-                        );
-                      })}
-                    </div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {kotChips.map((n) => `K-${String(n).padStart(4, "0")}`).join(" · ") || "all voided"}
+                          </div>
+                        </div>
+                        <div className="font-bold tabular-nums ml-2">× {activeQty}</div>
+                      </summary>
+                      <div className="px-3 pb-2 space-y-1">
+                        {lines.map((l) => {
+                          const isVoid = l.status === "void";
+                          return (
+                            <div key={l.id} className="flex items-center justify-between text-xs">
+                              <span className={isVoid ? "line-through text-muted-foreground" : "text-muted-foreground"}>
+                                K-{String(kotNoById.get(l.kot_id) ?? 0).padStart(4, "0")} · {l.qty}
+                                {l.note && <span className="ml-1">"{l.note}"</span>}
+                              </span>
+                              {!isVoid && (
+                                <Button variant="ghost" size="sm" className="h-6 text-danger" onClick={() => onVoid(l)}>
+                                  Void
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </details>
                   );
                 })}
               </div>
