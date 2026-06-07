@@ -116,12 +116,9 @@ export function KdsScreen() {
   // Wake lock + screen always on (best effort)
   useEffect(() => {
     let wakeLock: WakeLockSentinel | null = null;
-    interface WLNavigator extends Navigator {
-      wakeLock?: { request: (type: "screen") => Promise<WakeLockSentinel> };
-    }
-    const nav = navigator as WLNavigator;
-    if (nav.wakeLock?.request) {
-      nav.wakeLock.request("screen").then((w) => (wakeLock = w)).catch(() => {});
+    const wl = (navigator as unknown as { wakeLock?: { request: (t: "screen") => Promise<WakeLockSentinel> } }).wakeLock;
+    if (wl?.request) {
+      wl.request("screen").then((w) => (wakeLock = w)).catch(() => {});
     }
     return () => {
       wakeLock?.release().catch(() => {});
