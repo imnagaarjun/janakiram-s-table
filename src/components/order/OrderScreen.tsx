@@ -336,7 +336,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
 
       {/* Phone: floating cart */}
       {!isTablet && (
-        <Sheet>
+        <Sheet open={cartOpen} onOpenChange={setCartOpen}>
           <SheetTrigger asChild>
             <Button
               className="fixed right-3 z-30 h-14 rounded-full shadow-lg flex items-center gap-1.5"
