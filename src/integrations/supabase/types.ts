@@ -103,50 +103,77 @@ export type Database = {
         Row: {
           base: number
           cgst: number
+          complimentary: boolean
           created_at: string
           discount: number
+          discount_reason: string | null
           id: string
           invoice_no: string
           issued_at: string
           issued_by: string | null
+          notes: string | null
+          print_payload: Json | null
+          reopened_at: string | null
           restaurant_id: string
           round_off: number
           service_charge: number
           session_id: string
           sgst: number
+          status: string
           total: number
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
         }
         Insert: {
           base?: number
           cgst?: number
+          complimentary?: boolean
           created_at?: string
           discount?: number
+          discount_reason?: string | null
           id?: string
           invoice_no: string
           issued_at?: string
           issued_by?: string | null
+          notes?: string | null
+          print_payload?: Json | null
+          reopened_at?: string | null
           restaurant_id: string
           round_off?: number
           service_charge?: number
           session_id: string
           sgst?: number
+          status?: string
           total?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
         }
         Update: {
           base?: number
           cgst?: number
+          complimentary?: boolean
           created_at?: string
           discount?: number
+          discount_reason?: string | null
           id?: string
           invoice_no?: string
           issued_at?: string
           issued_by?: string | null
+          notes?: string | null
+          print_payload?: Json | null
+          reopened_at?: string | null
           restaurant_id?: string
           round_off?: number
           service_charge?: number
           session_id?: string
           sgst?: number
+          status?: string
           total?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
         }
         Relationships: [
           {
@@ -625,9 +652,11 @@ export type Database = {
           fssai: string | null
           gstin: string | null
           id: string
+          invoice_prefix: string
           logo_url: string | null
           name: string
           phone: string | null
+          service_charge_pct: number
           updated_at: string
         }
         Insert: {
@@ -637,9 +666,11 @@ export type Database = {
           fssai?: string | null
           gstin?: string | null
           id?: string
+          invoice_prefix?: string
           logo_url?: string | null
           name: string
           phone?: string | null
+          service_charge_pct?: number
           updated_at?: string
         }
         Update: {
@@ -649,9 +680,11 @@ export type Database = {
           fssai?: string | null
           gstin?: string | null
           id?: string
+          invoice_prefix?: string
           logo_url?: string | null
           name?: string
           phone?: string | null
+          service_charge_pct?: number
           updated_at?: string
         }
         Relationships: []
@@ -928,8 +961,17 @@ export type Database = {
         Returns: boolean
       }
       pool_qty: { Args: { _pool_id: string }; Returns: number }
+      reopen_invoice: {
+        Args: { _invoice_id: string; _manager_pin: string; _reason: string }
+        Returns: Json
+      }
+      request_bill: { Args: { _session_id: string }; Returns: Json }
       send_kot: {
         Args: { _items: Json; _note?: string; _session_id: string }
+        Returns: Json
+      }
+      settle_bill: {
+        Args: { _params: Json; _payments: Json; _session_id: string }
         Returns: Json
       }
       verify_staff_pin: { Args: { _pin: string }; Returns: string }
