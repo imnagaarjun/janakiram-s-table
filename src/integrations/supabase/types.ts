@@ -927,6 +927,20 @@ export type Database = {
         Returns: boolean
       }
       pool_qty: { Args: { _pool_id: string }; Returns: number }
+      send_kot: {
+        Args: { _items: Json; _note?: string; _session_id: string }
+        Returns: Json
+      }
+      verify_staff_pin: { Args: { _pin: string }; Returns: string }
+      void_kot_item: {
+        Args: {
+          _kot_item_id: string
+          _manager_pin: string
+          _note: string
+          _reason: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "manager" | "cashier" | "waiter" | "kitchen"
