@@ -149,7 +149,7 @@ export function ReportsHub() {
   );
 
   // Tabs by role
-  type TabDef = { value: string; label: string; render: () => JSX.Element };
+  type TabDef = { value: string; label: string; render: () => ReactElement };
   const allTabs: TabDef[] = [
     { value: "daily", label: "Daily Sales", render: () => <DailySales {...{ data, range }} /> },
     { value: "items", label: "Itemwise", render: () => <ItemwiseSales {...{ data, range, itemMap, sessionMap, priceFor }} /> },
