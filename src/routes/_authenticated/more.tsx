@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Settings, LogOut, User } from "lucide-react";
+import { Settings, LogOut, User, Boxes } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -29,6 +29,15 @@ function Page() {
       </div>
 
       <div className="rounded-2xl border border-border bg-surface overflow-hidden shadow-sm">
+        {hasRole("admin", "manager") && (
+          <Link
+            to="/stock"
+            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
+          >
+            <Boxes className="h-5 w-5 text-muted-foreground" />
+            <span className="flex-1 font-medium">Daily stock</span>
+          </Link>
+        )}
         {hasRole("admin") && (
           <Link
             to="/settings"
