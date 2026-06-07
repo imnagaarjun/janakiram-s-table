@@ -4,6 +4,7 @@ import { LayoutGrid, Plus, BookOpen, BarChart3, MoreHorizontal, ChefHat, Setting
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusPill } from "@/components/StatusPill";
+import { WaiterNotifier } from "@/components/WaiterNotifier";
 import type { AppRole } from "@/lib/types";
 
 interface NavItem {
