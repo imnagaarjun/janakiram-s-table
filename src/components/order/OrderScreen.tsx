@@ -337,17 +337,22 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         <Sheet>
           <SheetTrigger asChild>
             <Button
-              className="fixed right-3 z-30 h-14 rounded-full shadow-lg"
+              className="fixed right-3 z-30 h-14 rounded-full shadow-lg flex items-center gap-1.5"
               style={{ bottom: "calc(env(safe-area-inset-bottom) + 76px)" }}
             >
               <ShoppingBag className="h-5 w-5" />
-              <span className="ml-1 font-bold">{draftCount}</span>
-              <span className="ml-2 text-xs opacity-90">draft</span>
+              <span className="font-bold">{draftCount}</span>
+              <span className="text-xs opacity-90">draft</span>
+              {sentLines.filter((l) => l.status !== "void").length > 0 && (
+                <span className="ml-1 rounded-full bg-primary-foreground/20 px-1.5 py-0.5 text-[10px] font-bold">
+                  +{sentLines.filter((l) => l.status !== "void").reduce((s, l) => s + Number(l.qty), 0)} sent
+                </span>
+              )}
             </Button>
           </SheetTrigger>
           <SheetContent side="bottom" className="h-[85vh] p-0 flex flex-col">
             <SheetHeader className="p-4 border-b">
-              <SheetTitle>KOT draft</SheetTitle>
+              <SheetTitle>KOT draft & order history</SheetTitle>
             </SheetHeader>
             <DraftBody
               draft={draft}
