@@ -34,7 +34,7 @@ function visibleNav(roles: AppRole[]): NavItem[] {
     return ALL_NAV.filter((n) => ["/tables", "/menu", "/kds", "/reports", "/more"].includes(n.to));
   }
   // Waiter
-  return ALL_NAV.filter((n) => ["/tables", "/new-table", "/menu", "/reports", "/more"].includes(n.to));
+  return ALL_NAV.filter((n) => ["/tables", "/menu", "/reports", "/more"].includes(n.to));
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
