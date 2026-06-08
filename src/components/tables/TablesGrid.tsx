@@ -370,7 +370,28 @@ export function TablesGrid() {
       )}
 
       <Dialog open={!!picker} onOpenChange={(v) => !v && setPicker(null)}>
-        <DialogContent className="max-w-sm">
+        <DialogContent
+          className="max-w-sm"
+          onKeyDown={(e) => {
+            const tgt = e.target as HTMLElement;
+            const isSelectTrigger = tgt.closest('[role="combobox"]');
+            if (isSelectTrigger) return;
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (!starting && (parseInt(pax, 10) || 0) >= 1) startOrder();
+            } else if (/^[0-9]$/.test(e.key)) {
+              e.preventDefault();
+              setPax((prev) => {
+                const cur = prev === "0" || prev === "" ? "" : prev;
+                const next = (cur + e.key).slice(0, 3);
+                return next.replace(/^0+(?=\d)/, "");
+              });
+            } else if (e.key === "Backspace") {
+              e.preventDefault();
+              setPax((prev) => (prev.length <= 1 ? "" : prev.slice(0, -1)));
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>
               {picker?.kind === "takeaway"
@@ -402,15 +423,37 @@ export function TablesGrid() {
                 min={1}
                 value={pax}
                 onChange={(e) => setPax(e.target.value)}
-                className="text-2xl font-bold h-14 text-center"
+                className="text-3xl font-extrabold h-16 text-center"
+                autoFocus
               />
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"].map((k) => (
+                  <Button
+                    key={k}
+                    type="button"
+                    variant="secondary"
+                    className="h-12 text-lg font-semibold"
+                    onClick={() => {
+                      if (k === "C") setPax("");
+                      else if (k === "⌫") setPax((p) => (p.length <= 1 ? "" : p.slice(0, -1)));
+                      else
+                        setPax((prev) => {
+                          const cur = prev === "0" || prev === "" ? "" : prev;
+                          return (cur + k).slice(0, 3).replace(/^0+(?=\d)/, "");
+                        });
+                    }}
+                  >
+                    {k}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPicker(null)}>
               Cancel
             </Button>
-            <Button disabled={starting} onClick={startOrder}>
+            <Button disabled={starting || (parseInt(pax, 10) || 0) < 1} onClick={startOrder}>
               {starting ? "Opening…" : "Open order"}
             </Button>
           </DialogFooter>
