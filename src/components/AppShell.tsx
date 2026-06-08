@@ -120,8 +120,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Phone: top header thin + content + bottom tab bar
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <StatusPill />
       <WaiterNotifier />
+      <div className="h-9 shrink-0 border-b bg-surface flex items-center justify-end px-3">
+        <StatusPill fixed={false} />
+      </div>
       <main className="flex-1 overflow-y-auto pb-20">{children}</main>
       <nav
         className="fixed bottom-0 inset-x-0 z-40 border-t bg-surface flex justify-around items-stretch"
