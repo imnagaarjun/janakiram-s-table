@@ -58,6 +58,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [sentKots, setSentKots] = useState<SentKot[]>([]);
   const [sentLines, setSentLines] = useState<SentLine[]>([]);
+  const [prices, setPrices] = useState<Map<string, number>>(new Map());
   const [activeCat, setActiveCat] = useState<string>(FAV_KEY);
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [popup, setPopup] = useState<MenuItem | null>(null);
@@ -87,6 +88,16 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     setSentKots((kRes.data ?? []) as SentKot[]);
     const sk = new Set(((kRes.data ?? []) as SentKot[]).map((k) => k.id));
     setSentLines(((kiRes.data ?? []) as SentLine[]).filter((l) => sk.has(l.kot_id)));
+    const channel = (sRes.data as SessionRow | null)?.channel ?? "dinein";
+    const { data: pData } = await db
+      .from("menu_prices")
+      .select("menu_item_id,inclusive_price")
+      .eq("channel_key", channel);
+    const pmap = new Map<string, number>();
+    (pData ?? []).forEach((p: { menu_item_id: string; inclusive_price: number | string }) =>
+      pmap.set(p.menu_item_id, Number(p.inclusive_price)),
+    );
+    setPrices(pmap);
     setLoading(false);
   }, [sessionId]);
 
@@ -324,6 +335,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               sentKots={sentKots}
               sentLines={sentLines}
               itemsById={itemsById}
+              prices={prices}
               onUpdate={updateDraftQty}
               onClear={() => setDraft([])}
               onSend={sendKot}
@@ -363,6 +375,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               sentKots={sentKots}
               sentLines={sentLines}
               itemsById={itemsById}
+              prices={prices}
               onUpdate={updateDraftQty}
               onClear={() => setDraft([])}
               onSend={sendKot}
@@ -425,6 +438,7 @@ function DraftBody({
   sentKots,
   sentLines,
   itemsById,
+  prices,
   onUpdate,
   onClear,
   onSend,
@@ -437,12 +451,20 @@ function DraftBody({
   sentKots: SentKot[];
   sentLines: SentLine[];
   itemsById: Map<string, MenuItem>;
+  prices: Map<string, number>;
   onUpdate: (key: string, qty: number) => void;
   onClear: () => void;
   onSend: () => void;
   sending: boolean;
   onVoid: (l: SentLine) => void;
 }) {
+  const fmt = (n: number) => `₹${n.toFixed(2)}`;
+  const priceOf = (mid: string) => prices.get(mid) ?? 0;
+  const draftTotal = draft.reduce((s, d) => s + d.qty * priceOf(d.menu_item_id), 0);
+  const sentTotal = sentLines
+    .filter((l) => l.status !== "void")
+    .reduce((s, l) => s + Number(l.qty) * priceOf(l.menu_item_id), 0);
+  const grandTotal = draftTotal + sentTotal;
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
@@ -454,29 +476,39 @@ function DraftBody({
             </div>
           )}
           <div className="space-y-1.5">
-            {draft.map((d) => (
-              <div key={d.key} className="flex items-center gap-2 rounded-lg border border-border p-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold truncate">{d.name}</div>
-                  {d.note && <div className="text-[11px] text-muted-foreground truncate">"{d.note}"</div>}
+            {draft.map((d) => {
+              const p = priceOf(d.menu_item_id);
+              return (
+                <div key={d.key} className="flex items-center gap-2 rounded-lg border border-border p-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate">{d.name}</div>
+                    <div className="text-[11px] text-muted-foreground tabular-nums">
+                      {d.qty} × {fmt(p)} = <span className="font-semibold text-foreground">{fmt(d.qty * p)}</span>
+                    </div>
+                    {d.note && <div className="text-[11px] text-muted-foreground truncate">"{d.note}"</div>}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty - 1)}>
+                      −
+                    </Button>
+                    <div className="w-8 text-center font-bold">{d.qty}</div>
+                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty + 1)}>
+                      +
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-danger" onClick={() => onUpdate(d.key, 0)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty - 1)}>
-                    −
-                  </Button>
-                  <div className="w-8 text-center font-bold">{d.qty}</div>
-                  <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty + 1)}>
-                    +
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 text-danger" onClick={() => onUpdate(d.key, 0)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {draft.length > 0 && (
-            <div className="mt-2">
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center justify-between text-xs px-1">
+                <span className="text-muted-foreground">Draft subtotal</span>
+                <span className="font-semibold tabular-nums">{fmt(draftTotal)}</span>
+              </div>
               <Input
                 value={kotNote}
                 onChange={(e) => setKotNote(e.target.value)}
@@ -506,18 +538,24 @@ function DraftBody({
                   const activeQty = lines.filter((l) => l.status !== "void").reduce((s, l) => s + Number(l.qty), 0);
                   const activeLines = lines.filter((l) => l.status !== "void");
                   const kotChips = Array.from(new Set(activeLines.map((l) => kotNoById.get(l.kot_id)))).filter(Boolean);
+                  const p = priceOf(mid);
+                  const lineTotal = activeQty * p;
                   return (
                     <details key={mid} className="group">
-                      <summary className="flex items-center justify-between p-2 cursor-pointer list-none">
+                      <summary className="flex items-center justify-between p-2 cursor-pointer list-none gap-2">
                         <div className="flex-1 min-w-0">
                           <div className={`text-sm font-semibold truncate ${activeQty === 0 ? "line-through text-muted-foreground" : ""}`}>
                             {itemsById.get(mid)?.name ?? "—"}
                           </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {kotChips.map((n) => `K-${String(n).padStart(4, "0")}`).join(" · ") || "all voided"}
+                          <div className="text-[10px] text-muted-foreground tabular-nums">
+                            {activeQty} × {fmt(p)}
+                            {kotChips.length > 0 && (
+                              <span className="ml-1">· {kotChips.map((n) => `K-${String(n).padStart(4, "0")}`).join(" · ")}</span>
+                            )}
+                            {kotChips.length === 0 && <span className="ml-1">· all voided</span>}
                           </div>
                         </div>
-                        <div className="font-bold tabular-nums ml-2">× {activeQty}</div>
+                        <div className="font-bold tabular-nums text-right">{fmt(lineTotal)}</div>
                       </summary>
                       <div className="px-3 pb-2 space-y-1">
                         {lines.map((l) => {
@@ -541,9 +579,18 @@ function DraftBody({
                   );
                 })}
               </div>
+              <div className="mt-2 flex items-center justify-between text-xs px-1">
+                <span className="text-muted-foreground">Previously ordered subtotal</span>
+                <span className="font-semibold tabular-nums">{fmt(sentTotal)}</span>
+              </div>
             </section>
           );
         })()}
+
+        <div className="rounded-lg border border-primary bg-primary/10 p-3 flex items-center justify-between">
+          <span className="text-sm font-semibold">Bill total so far</span>
+          <span className="text-lg font-extrabold tabular-nums">{fmt(grandTotal)}</span>
+        </div>
       </div>
 
       <div className="border-t p-3 flex items-center gap-2 bg-surface">
