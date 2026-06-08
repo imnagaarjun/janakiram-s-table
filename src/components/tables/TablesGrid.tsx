@@ -353,6 +353,54 @@ export function TablesGrid() {
           })}
         </div>
       )}
+
+      <Dialog open={!!picker} onOpenChange={(v) => !v && setPicker(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {picker?.kind === "takeaway"
+                ? "New takeaway order"
+                : picker?.kind === "table"
+                  ? `Start Table ${picker.code}`
+                  : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {picker?.kind === "table" && (
+              <div>
+                <Label className="text-xs">Channel</Label>
+                <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dinein">Dine-in</SelectItem>
+                    <SelectItem value="takeaway">Takeaway</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label className="text-xs">Pax</Label>
+              <Input
+                type="number"
+                min={1}
+                value={pax}
+                onChange={(e) => setPax(e.target.value)}
+                className="text-2xl font-bold h-14 text-center"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPicker(null)}>
+              Cancel
+            </Button>
+            <Button disabled={starting} onClick={startOrder}>
+              {starting ? "Opening…" : "Open order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
