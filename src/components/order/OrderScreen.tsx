@@ -236,14 +236,22 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     const kotNo = (data as { kot_no: number }).kot_no;
     toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
 
-    printProForma(`PREVIEW · K-${String(kotNo).padStart(4, "0")}`, draft);
+    printKOT({
+      restaurantName: restaurant?.name,
+      kotNo: `K-${String(kotNo).padStart(4, "0")}`,
+      sentAt: new Date().toISOString(),
+      tableLabel: session?.table_code ? `Table ${session.table_code}` : "Takeaway",
+      pax: session?.pax ?? 1,
+      lines: draft.map((d) => ({ name: d.name, qty: d.qty, note: d.note })),
+      note: kotNote || undefined,
+    });
 
     setDraft([]);
     setKotNote("");
     setCartOpen(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, kotNote, sessionId, sentLines, prices, restaurant, session, itemsById, load]);
+  }, [draft, kotNote, sessionId, restaurant, session, load]);
 
   // Keyboard shortcut: Ctrl/Cmd+Enter to send KOT (works anywhere on the page)
   useEffect(() => {
