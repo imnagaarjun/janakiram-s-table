@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { MenuImage } from "@/components/menu/MenuImage";
 import { ItemQtyDialog } from "./ItemQtyDialog";
 import { VoidDialog } from "./VoidDialog";
+import { TakeawaySettleDialog, type TakeawaySettleResult } from "./TakeawaySettleDialog";
 import { computeBill, type BillLine } from "@/lib/billing";
 import { printBill } from "@/lib/print-bill";
 import { printKOT } from "@/lib/print-kot";
@@ -73,6 +74,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [sending, setSending] = useState(false);
   const [voidLine, setVoidLine] = useState<SentLine | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
+  const [takeawaySettleOpen, setTakeawaySettleOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [sRes, mRes, cRes, rRes, lRes, kRes, kiRes] = await Promise.all([
