@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutGrid, Plus, BookOpen, BarChart3, MoreHorizontal, ChefHat, Settings, Boxes, Users } from "lucide-react";
+import { LayoutGrid, BookOpen, BarChart3, MoreHorizontal, ChefHat, Settings, Boxes, Users } from "lucide-react";
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusPill } from "@/components/StatusPill";
