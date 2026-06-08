@@ -10,6 +10,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { MenuImage } from "@/components/menu/MenuImage";
 import { ItemQtyDialog } from "./ItemQtyDialog";
 import { VoidDialog } from "./VoidDialog";
+import { computeBill, type BillLine } from "@/lib/billing";
+import { printBill } from "@/lib/print-bill";
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import {
   availableFor,
