@@ -78,7 +78,7 @@ export function TablesGrid() {
   // Start-order dialog state
   const [picker, setPicker] = useState<{ kind: "table"; code: string } | { kind: "takeaway" } | null>(null);
   const [channel, setChannel] = useState<"dinein" | "takeaway">("dinein");
-  const [pax, setPax] = useState("2");
+  const [pax, setPax] = useState("0");
   const [starting, setStarting] = useState(false);
 
   const load = useCallback(async () => {
