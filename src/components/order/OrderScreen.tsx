@@ -583,6 +583,17 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         }
         onConfirm={(r, n, pin) => { if (voidLine) return confirmVoid(voidLine, r, n, pin); }}
       />
+
+      <TakeawaySettleDialog
+        open={takeawaySettleOpen}
+        onOpenChange={setTakeawaySettleOpen}
+        sessionId={sessionId}
+        lines={draftBillLines}
+        draftItems={draft.map((d) => ({ menu_item_id: d.menu_item_id, qty: d.qty, note: d.note ?? null }))}
+        kotNote={kotNote || null}
+        serviceChargePctDefault={restaurant?.service_charge_pct ?? 0}
+        onSettled={onTakeawaySettled}
+      />
     </div>
   );
 }
