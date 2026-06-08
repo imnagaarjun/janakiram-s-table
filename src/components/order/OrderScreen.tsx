@@ -476,29 +476,39 @@ function DraftBody({
             </div>
           )}
           <div className="space-y-1.5">
-            {draft.map((d) => (
-              <div key={d.key} className="flex items-center gap-2 rounded-lg border border-border p-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold truncate">{d.name}</div>
-                  {d.note && <div className="text-[11px] text-muted-foreground truncate">"{d.note}"</div>}
+            {draft.map((d) => {
+              const p = priceOf(d.menu_item_id);
+              return (
+                <div key={d.key} className="flex items-center gap-2 rounded-lg border border-border p-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate">{d.name}</div>
+                    <div className="text-[11px] text-muted-foreground tabular-nums">
+                      {d.qty} × {fmt(p)} = <span className="font-semibold text-foreground">{fmt(d.qty * p)}</span>
+                    </div>
+                    {d.note && <div className="text-[11px] text-muted-foreground truncate">"{d.note}"</div>}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty - 1)}>
+                      −
+                    </Button>
+                    <div className="w-8 text-center font-bold">{d.qty}</div>
+                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty + 1)}>
+                      +
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-danger" onClick={() => onUpdate(d.key, 0)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty - 1)}>
-                    −
-                  </Button>
-                  <div className="w-8 text-center font-bold">{d.qty}</div>
-                  <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty + 1)}>
-                    +
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 text-danger" onClick={() => onUpdate(d.key, 0)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {draft.length > 0 && (
-            <div className="mt-2">
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center justify-between text-xs px-1">
+                <span className="text-muted-foreground">Draft subtotal</span>
+                <span className="font-semibold tabular-nums">{fmt(draftTotal)}</span>
+              </div>
               <Input
                 value={kotNote}
                 onChange={(e) => setKotNote(e.target.value)}
