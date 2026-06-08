@@ -496,7 +496,7 @@ function ManageGroups({
       .insert({
         restaurant_id: restaurantId,
         code: code.trim(),
-        split_count: Math.max(1, Math.min(8, parseInt(splits, 10) || 1)),
+        split_count: Math.max(1, Math.min(10, parseInt(splits, 10) || 1)),
         seats: Math.max(1, parseInt(seats, 10) || 4),
         waiter_id: waiterId === "none" ? null : waiterId,
         display_order: order,
