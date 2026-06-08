@@ -48,7 +48,7 @@ interface SentKot {
   note: string | null;
 }
 
-const FAV_KEY = "__favorites__";
+const ALL_KEY = "__all__";
 
 export function OrderScreen({ sessionId }: { sessionId: string }) {
   const nav = useNavigate();
