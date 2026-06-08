@@ -62,8 +62,9 @@ function groupCodeNumeric(code: string): number {
 
 export function TablesGrid() {
   const nav = useNavigate();
-  const { profile, hasRole } = useAuth();
+  const { profile, roles, hasRole } = useAuth();
   const restaurantId = profile?.restaurant_id;
+  const isWaiterOnly = roles.includes("waiter") && !hasRole("admin", "manager", "cashier");
 
   const [tables, setTables] = useState<DiningTable[]>([]);
   const [groups, setGroups] = useState<TableGroup[]>([]);
@@ -73,6 +74,12 @@ export function TablesGrid() {
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "free">("all");
   const [waiterFilter, setWaiterFilter] = useState<string>("all");
   const [manageOpen, setManageOpen] = useState(false);
+
+  // Start-order dialog state
+  const [picker, setPicker] = useState<{ kind: "table"; code: string } | { kind: "takeaway" } | null>(null);
+  const [channel, setChannel] = useState<"dinein" | "takeaway">("dinein");
+  const [pax, setPax] = useState("2");
+  const [starting, setStarting] = useState(false);
 
   const load = useCallback(async () => {
     if (!restaurantId) return;
@@ -97,6 +104,14 @@ export function TablesGrid() {
     return m;
   }, [tables]);
 
+  const myWaiterId = useMemo(() => {
+    if (!isWaiterOnly || !profile) return null;
+    const w = waiters.find(
+      (x) => x.name.trim().toLowerCase() === profile.name.trim().toLowerCase(),
+    );
+    return w?.id ?? null;
+  }, [isWaiterOnly, profile, waiters]);
+
   const sortedGroups = useMemo(
     () =>
       [...groups].sort(
@@ -107,6 +122,7 @@ export function TablesGrid() {
 
   const filteredGroups = useMemo(() => {
     return sortedGroups.filter((g) => {
+      if (isWaiterOnly && g.waiter_id !== myWaiterId) return false;
       if (waiterFilter !== "all" && g.waiter_id !== waiterFilter) return false;
       if (statusFilter !== "all") {
         const codes = childCodesFor(g);
@@ -119,11 +135,12 @@ export function TablesGrid() {
       }
       return true;
     });
-  }, [sortedGroups, statusFilter, waiterFilter, tableByCode]);
+  }, [sortedGroups, statusFilter, waiterFilter, tableByCode, isWaiterOnly, myWaiterId]);
 
   const openTile = useCallback(
     async (code: string, status: TableStatus) => {
-      if (status === "free" || status === "inactive") return;
+      if (status === "inactive") return;
+      // Existing open/bill_requested session → resume
       const { data } = await db
         .from("order_sessions")
         .select("id,status")
@@ -132,15 +149,60 @@ export function TablesGrid() {
         .order("opened_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (!data) return;
-      if (data.status === "bill_requested") {
-        nav({ to: "/bill/$sessionId", params: { sessionId: data.id } });
-      } else {
-        nav({ to: "/order/$sessionId", params: { sessionId: data.id } });
+      if (data) {
+        if (data.status === "bill_requested") {
+          nav({ to: "/bill/$sessionId", params: { sessionId: data.id } });
+        } else {
+          nav({ to: "/order/$sessionId", params: { sessionId: data.id } });
+        }
+        return;
+      }
+      // Free tile → open start-order dialog
+      if (status === "free" || status === "seated_no_kot") {
+        setChannel("dinein");
+        setPax("2");
+        setPicker({ kind: "table", code });
       }
     },
     [nav],
   );
+
+  const openTakeaway = useCallback(() => {
+    setChannel("takeaway");
+    setPax("1");
+    setPicker({ kind: "takeaway" });
+  }, []);
+
+  const startOrder = useCallback(async () => {
+    if (!profile || !picker) return;
+    setStarting(true);
+    const isTakeaway = picker.kind === "takeaway";
+    const tableCode = isTakeaway ? null : picker.code;
+    const { data, error } = await db
+      .from("order_sessions")
+      .insert({
+        restaurant_id: profile.restaurant_id,
+        table_code: tableCode,
+        channel: isTakeaway ? "takeaway" : channel,
+        pax: Math.max(1, parseInt(pax, 10) || 1),
+      })
+      .select("id")
+      .single();
+    setStarting(false);
+    if (error || !data) {
+      toast.error(error?.message ?? "Failed to open order");
+      return;
+    }
+    if (!isTakeaway && tableCode) {
+      const t = tableByCode.get(tableCode);
+      if (t) {
+        await db.from("tables").update({ status: "seated_no_kot" }).eq("id", t.id);
+      }
+    }
+    setPicker(null);
+    nav({ to: "/order/$sessionId", params: { sessionId: (data as { id: string }).id } });
+  }, [profile, picker, channel, pax, tableByCode, nav]);
+
 
   if (loading) {
     return (
