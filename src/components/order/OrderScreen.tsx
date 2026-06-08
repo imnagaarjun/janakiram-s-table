@@ -538,18 +538,24 @@ function DraftBody({
                   const activeQty = lines.filter((l) => l.status !== "void").reduce((s, l) => s + Number(l.qty), 0);
                   const activeLines = lines.filter((l) => l.status !== "void");
                   const kotChips = Array.from(new Set(activeLines.map((l) => kotNoById.get(l.kot_id)))).filter(Boolean);
+                  const p = priceOf(mid);
+                  const lineTotal = activeQty * p;
                   return (
                     <details key={mid} className="group">
-                      <summary className="flex items-center justify-between p-2 cursor-pointer list-none">
+                      <summary className="flex items-center justify-between p-2 cursor-pointer list-none gap-2">
                         <div className="flex-1 min-w-0">
                           <div className={`text-sm font-semibold truncate ${activeQty === 0 ? "line-through text-muted-foreground" : ""}`}>
                             {itemsById.get(mid)?.name ?? "—"}
                           </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {kotChips.map((n) => `K-${String(n).padStart(4, "0")}`).join(" · ") || "all voided"}
+                          <div className="text-[10px] text-muted-foreground tabular-nums">
+                            {activeQty} × {fmt(p)}
+                            {kotChips.length > 0 && (
+                              <span className="ml-1">· {kotChips.map((n) => `K-${String(n).padStart(4, "0")}`).join(" · ")}</span>
+                            )}
+                            {kotChips.length === 0 && <span className="ml-1">· all voided</span>}
                           </div>
                         </div>
-                        <div className="font-bold tabular-nums ml-2">× {activeQty}</div>
+                        <div className="font-bold tabular-nums text-right">{fmt(lineTotal)}</div>
                       </summary>
                       <div className="px-3 pb-2 space-y-1">
                         {lines.map((l) => {
@@ -573,9 +579,18 @@ function DraftBody({
                   );
                 })}
               </div>
+              <div className="mt-2 flex items-center justify-between text-xs px-1">
+                <span className="text-muted-foreground">Previously ordered subtotal</span>
+                <span className="font-semibold tabular-nums">{fmt(sentTotal)}</span>
+              </div>
             </section>
           );
         })()}
+
+        <div className="rounded-lg border border-primary bg-primary/10 p-3 flex items-center justify-between">
+          <span className="text-sm font-semibold">Bill total so far</span>
+          <span className="text-lg font-extrabold tabular-nums">{fmt(grandTotal)}</span>
+        </div>
       </div>
 
       <div className="border-t p-3 flex items-center gap-2 bg-surface">
