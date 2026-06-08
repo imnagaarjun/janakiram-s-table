@@ -1,24 +1,22 @@
 import { useOnlineStatus } from "@/hooks/use-online-status";
-import { Wifi, WifiOff, RefreshCw } from "lucide-react";
 
 export function StatusPill() {
   const s = useOnlineStatus();
-  const label = s === "online" ? "Online" : s === "offline" ? "Offline" : "Syncing";
   const color =
     s === "online"
-      ? "bg-success text-success-foreground"
+      ? "bg-success"
       : s === "offline"
-        ? "bg-danger text-danger-foreground"
-        : "bg-warning text-warning-foreground";
-  const Icon = s === "online" ? Wifi : s === "offline" ? WifiOff : RefreshCw;
+        ? "bg-danger"
+        : "bg-warning animate-pulse";
+  const label = s === "online" ? "Online" : s === "offline" ? "Offline" : "Syncing";
   return (
     <div
-      className={`fixed top-3 right-3 z-50 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium shadow-sm ${color}`}
+      className="fixed top-2 right-2 z-50 h-3 w-3 rounded-full ring-2 ring-background shadow-sm pointer-events-none"
       role="status"
-      aria-live="polite"
+      aria-label={label}
+      title={label}
     >
-      <Icon className={`h-3.5 w-3.5 ${s === "syncing" ? "animate-spin" : ""}`} />
-      <span>{label}</span>
+      <div className={`h-full w-full rounded-full ${color}`} />
     </div>
   );
 }

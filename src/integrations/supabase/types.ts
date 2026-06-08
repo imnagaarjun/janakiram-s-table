@@ -778,6 +778,57 @@ export type Database = {
           },
         ]
       }
+      table_groups: {
+        Row: {
+          code: string
+          created_at: string
+          display_order: number
+          id: string
+          restaurant_id: string
+          seats: number
+          split_count: number
+          updated_at: string
+          waiter_id: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          restaurant_id: string
+          seats?: number
+          split_count?: number
+          updated_at?: string
+          waiter_id?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          restaurant_id?: string
+          seats?: number
+          split_count?: number
+          updated_at?: string
+          waiter_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_groups_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_groups_waiter_id_fkey"
+            columns: ["waiter_id"]
+            isOneToOne: false
+            referencedRelation: "waiters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tables: {
         Row: {
           code: string
@@ -974,6 +1025,7 @@ export type Database = {
         Args: { _params: Json; _payments: Json; _session_id: string }
         Returns: Json
       }
+      sync_table_group: { Args: { _group_id: string }; Returns: undefined }
       verify_staff_pin: { Args: { _pin: string }; Returns: string }
       void_kot_item: {
         Args: {
