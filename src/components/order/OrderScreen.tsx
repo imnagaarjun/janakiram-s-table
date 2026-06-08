@@ -187,7 +187,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
 
   const sendingRef = useRef(false);
 
-  function printProForma(invoiceTag: string, extraDraft: DraftLine[] = []) {
+  function printProForma(invoiceTag: string, extraDraft: DraftLine[] = [], opts?: { noteOverride?: string | null }) {
     try {
       const agg = new Map<string, number>();
       sentLines.filter((l) => l.status !== "void").forEach((l) => {
@@ -224,7 +224,8 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         lines: billLines,
         totals,
         payments: [],
-        notes: "*** PRO-FORMA — NOT A TAX INVOICE ***",
+        notes: opts?.noteOverride !== undefined ? opts.noteOverride : "*** PRO-FORMA — NOT A TAX INVOICE ***",
+        waiterName,
       });
     } catch (e) {
       console.error("Print preview failed", e);
