@@ -78,7 +78,7 @@ export function TablesGrid() {
   // Start-order dialog state
   const [picker, setPicker] = useState<{ kind: "table"; code: string } | { kind: "takeaway" } | null>(null);
   const [channel, setChannel] = useState<"dinein" | "takeaway">("dinein");
-  const [pax, setPax] = useState("2");
+  const [pax, setPax] = useState("0");
   const [starting, setStarting] = useState(false);
 
   const load = useCallback(async () => {
@@ -160,7 +160,7 @@ export function TablesGrid() {
       // Free tile → open start-order dialog
       if (status === "free" || status === "seated_no_kot") {
         setChannel("dinein");
-        setPax("2");
+        setPax("0");
         setPicker({ kind: "table", code });
       }
     },
@@ -496,7 +496,7 @@ function ManageGroups({
       .insert({
         restaurant_id: restaurantId,
         code: code.trim(),
-        split_count: Math.max(1, Math.min(8, parseInt(splits, 10) || 1)),
+        split_count: Math.max(1, Math.min(10, parseInt(splits, 10) || 1)),
         seats: Math.max(1, parseInt(seats, 10) || 4),
         waiter_id: waiterId === "none" ? null : waiterId,
         display_order: order,
@@ -553,7 +553,7 @@ function ManageGroups({
             <Select value={splits} onValueChange={setSplits}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                   <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                 ))}
               </SelectContent>
@@ -561,7 +561,14 @@ function ManageGroups({
           </div>
           <div>
             <Label className="text-xs">Seats</Label>
-            <Input type="number" min={1} value={seats} onChange={(e) => setSeats(e.target.value)} />
+            <Select value={seats} onValueChange={setSeats}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div>
@@ -598,7 +605,7 @@ function ManageGroups({
               <Select value={String(g.split_count)} onValueChange={(v) => update(g, { split_count: parseInt(v, 10) })}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                     <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                   ))}
                 </SelectContent>
@@ -606,16 +613,14 @@ function ManageGroups({
             </div>
             <div className="col-span-2">
               <Label className="text-[10px]">Seats</Label>
-              <Input
-                className="h-9"
-                type="number"
-                min={1}
-                defaultValue={g.seats}
-                onBlur={(e) => {
-                  const n = Math.max(1, parseInt(e.target.value, 10) || 1);
-                  if (n !== g.seats) update(g, { seats: n });
-                }}
-              />
+              <Select value={String(g.seats)} onValueChange={(v) => update(g, { seats: parseInt(v, 10) })}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="col-span-5">
               <Label className="text-[10px]">Waiter</Label>
