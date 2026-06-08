@@ -36,8 +36,9 @@ export function printBill(opts: {
   notes?: string | null;
   duplicate?: boolean;
   waiterName?: string | null;
+  paidMarker?: boolean;
 }) {
-  const { restaurant, invoice_no, issued_at, table_label, pax, lines, totals, payments, notes, duplicate, waiterName } = opts;
+  const { restaurant, invoice_no, issued_at, table_label, pax, lines, totals, payments, notes, duplicate, waiterName, paidMarker } = opts;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${invoice_no}</title>
 <style>
   @page { size: 80mm auto; margin: 4mm; }
