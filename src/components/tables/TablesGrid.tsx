@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Settings2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Settings2, Plus, Trash2, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,6 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   STATUS_CLASSES,
   STATUS_LABEL,
