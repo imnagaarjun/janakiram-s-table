@@ -57,13 +57,14 @@ export function printBill(opts: {
 </style></head><body>
 ${duplicate ? `<div class="dup">DUPLICATE / REPRINT</div>` : ""}
 <h1>${escape(restaurant.name ?? "—")}</h1>
+${restaurant.address ? `<div class="addr">${escape(restaurant.address)}</div>` : ""}
 <div class="meta">
-  ${escape(restaurant.address ?? "")}<br>
   ${restaurant.phone ? `Ph: ${escape(restaurant.phone)} · ` : ""}${restaurant.gstin ? `GSTIN: ${escape(restaurant.gstin)}` : ""}
   ${restaurant.fssai ? `<br>FSSAI: ${escape(restaurant.fssai)}` : ""}
 </div>
 <div class="row"><span>Bill: <b>${invoice_no}</b></span><span>${new Date(issued_at).toLocaleString()}</span></div>
 <div class="row"><span>${table_label}</span><span>Pax: ${pax}</span></div>
+${waiterName ? `<div class="row"><span>Server: ${escape(waiterName)}</span><span></span></div>` : ""}
 <table>
   <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amt</th></tr></thead>
   <tbody>
