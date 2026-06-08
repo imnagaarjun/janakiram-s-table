@@ -160,7 +160,7 @@ export function TablesGrid() {
       // Free tile → open start-order dialog
       if (status === "free" || status === "seated_no_kot") {
         setChannel("dinein");
-        setPax("2");
+        setPax("0");
         setPicker({ kind: "table", code });
       }
     },
