@@ -16,7 +16,6 @@ interface NavItem {
 
 const ALL_NAV: NavItem[] = [
   { to: "/tables", label: "Tables", icon: LayoutGrid, roles: ["admin", "manager", "cashier", "waiter"] },
-  { to: "/new-table", label: "New Table", icon: Plus, roles: ["admin", "manager", "waiter"] },
   { to: "/menu", label: "Menu", icon: BookOpen, roles: ["admin", "manager", "waiter", "cashier"] },
   { to: "/kds", label: "KDS", icon: ChefHat, roles: ["admin", "manager", "kitchen", "cashier"] },
   { to: "/reports", label: "Reports", icon: BarChart3, roles: ["admin", "manager", "cashier", "waiter"] },
