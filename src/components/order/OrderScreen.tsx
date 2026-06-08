@@ -168,31 +168,15 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     setDraft((d) => d.map((x) => (x.key === key ? { ...x, qty } : x)));
   }
 
-  async function sendKot() {
-    if (draft.length === 0) return;
-    setSending(true);
-    const payload = draft.map((d) => ({ menu_item_id: d.menu_item_id, qty: d.qty, note: d.note ?? null }));
-    const { data, error } = await db.rpc("send_kot", {
-      _session_id: sessionId,
-      _items: payload,
-      _note: kotNote || null,
-    });
-    setSending(false);
-    if (error) {
-      toast.error(parseRpcError(error.message));
-      load(); // reconcile
-      return;
-    }
-    const kotNo = (data as { kot_no: number }).kot_no;
-    toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
+  const sendingRef = useRef(false);
 
-    // Build combined lines (active sent + just-sent draft) for pro-forma bill print
+  function printProForma(invoiceTag: string, extraDraft: DraftLine[] = []) {
     try {
       const agg = new Map<string, number>();
       sentLines.filter((l) => l.status !== "void").forEach((l) => {
         agg.set(l.menu_item_id, (agg.get(l.menu_item_id) ?? 0) + Number(l.qty));
       });
-      draft.forEach((d) => {
+      extraDraft.forEach((d) => {
         agg.set(d.menu_item_id, (agg.get(d.menu_item_id) ?? 0) + d.qty);
       });
       const billLines: BillLine[] = Array.from(agg.entries()).map(([mid, qty]) => {
@@ -207,34 +191,71 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
           line_total: qty * (p?.inclusive ?? 0),
         };
       });
-      if (billLines.length > 0 && restaurant && session) {
-        const totals = computeBill(billLines, {
-          service_charge_pct: restaurant.service_charge_pct ?? 0,
-          discount_amt: 0,
-          discount_pct: 0,
-          complimentary: false,
-        });
-        printBill({
-          restaurant,
-          invoice_no: `PREVIEW · K-${String(kotNo).padStart(4, "0")}`,
-          issued_at: new Date().toISOString(),
-          table_label: session.table_code ? `Table ${session.table_code}` : "Takeaway",
-          pax: session.pax,
-          lines: billLines,
-          totals,
-          payments: [],
-          notes: "*** PRO-FORMA — NOT A TAX INVOICE ***",
-        });
-      }
+      if (billLines.length === 0 || !restaurant || !session) return;
+      const totals = computeBill(billLines, {
+        service_charge_pct: restaurant.service_charge_pct ?? 0,
+        discount_amt: 0,
+        discount_pct: 0,
+        complimentary: false,
+      });
+      printBill({
+        restaurant,
+        invoice_no: invoiceTag,
+        issued_at: new Date().toISOString(),
+        table_label: session.table_code ? `Table ${session.table_code}` : "Takeaway",
+        pax: session.pax,
+        lines: billLines,
+        totals,
+        payments: [],
+        notes: "*** PRO-FORMA — NOT A TAX INVOICE ***",
+      });
     } catch (e) {
       console.error("Print preview failed", e);
     }
+  }
+
+  const sendKot = useCallback(async () => {
+    if (sendingRef.current) return;
+    if (draft.length === 0) return;
+    sendingRef.current = true;
+    setSending(true);
+    const payload = draft.map((d) => ({ menu_item_id: d.menu_item_id, qty: d.qty, note: d.note ?? null }));
+    const { data, error } = await db.rpc("send_kot", {
+      _session_id: sessionId,
+      _items: payload,
+      _note: kotNote || null,
+    });
+    setSending(false);
+    sendingRef.current = false;
+    if (error) {
+      toast.error(parseRpcError(error.message));
+      load();
+      return;
+    }
+    const kotNo = (data as { kot_no: number }).kot_no;
+    toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
+
+    printProForma(`PREVIEW · K-${String(kotNo).padStart(4, "0")}`, draft);
 
     setDraft([]);
     setKotNote("");
     setCartOpen(false);
     load();
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, kotNote, sessionId, sentLines, prices, restaurant, session, itemsById, load]);
+
+  // Keyboard shortcut: Ctrl/Cmd+Enter to send KOT (works anywhere on the page)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Enter") return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (draft.length === 0) return;
+      e.preventDefault();
+      sendKot();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [draft.length, sendKot]);
 
   async function confirmVoid(line: SentLine, reason: string, note: string, pin: string) {
     const { error } = await db.rpc("void_kot_item", {
