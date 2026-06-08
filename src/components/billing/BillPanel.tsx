@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronLeft, Loader2, Plus, Trash2, Printer, Undo2 } from "lucide-react";
 import { toast } from "sonner";
@@ -86,6 +86,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
     { key: crypto.randomUUID(), mode: "cash", amount: "", ref_no: "" },
   ]);
   const [notes, setNotes] = useState("");
+  const defaultAmountSet = useRef(false);
   const [settling, setSettling] = useState(false);
   const [confirmation, setConfirmation] = useState<{
     invoice_no: string;
@@ -182,6 +183,18 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       }),
     [lines, svcPct, discAmt, discPct, complimentary],
   );
+
+  useEffect(() => {
+    if (!loading && totals.total > 0 && !defaultAmountSet.current) {
+      defaultAmountSet.current = true;
+      setPayments((prev) => {
+        if (prev.length === 1 && prev[0].mode === "cash" && prev[0].amount === "") {
+          return [{ ...prev[0], amount: totals.total.toFixed(2) }];
+        }
+        return prev;
+      });
+    }
+  }, [loading, totals.total]);
 
   const tendered = useMemo(
     () => payments.reduce((s, p) => s + (Number(p.amount) || 0), 0),
