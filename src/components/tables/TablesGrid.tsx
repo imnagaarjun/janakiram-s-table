@@ -553,7 +553,7 @@ function ManageGroups({
             <Select value={splits} onValueChange={setSplits}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                   <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                 ))}
               </SelectContent>
@@ -561,7 +561,14 @@ function ManageGroups({
           </div>
           <div>
             <Label className="text-xs">Seats</Label>
-            <Input type="number" min={1} value={seats} onChange={(e) => setSeats(e.target.value)} />
+            <Select value={seats} onValueChange={setSeats}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div>
