@@ -415,7 +415,6 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               itemsById={itemsById}
               prices={prices}
               onUpdate={updateDraftQty}
-              onClear={() => setDraft([])}
               onSend={sendKot}
               sending={sending}
               onVoid={setVoidLine}
@@ -457,7 +456,6 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               itemsById={itemsById}
               prices={prices}
               onUpdate={updateDraftQty}
-              onClear={() => setDraft([])}
               onSend={sendKot}
               sending={sending}
               onVoid={setVoidLine}
@@ -521,7 +519,6 @@ function DraftBody({
   itemsById,
   prices,
   onUpdate,
-  onClear,
   onSend,
   sending,
   onVoid,
@@ -534,7 +531,6 @@ function DraftBody({
   itemsById: Map<string, MenuItem>;
   prices: Map<string, { inclusive: number; base: number; gst: number }>;
   onUpdate: (key: string, qty: number) => void;
-  onClear: () => void;
   onSend: () => void;
   sending: boolean;
   onVoid: (l: SentLine) => void;
