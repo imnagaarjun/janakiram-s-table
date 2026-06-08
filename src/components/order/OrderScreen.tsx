@@ -341,7 +341,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
             {sentKots.length} KOT sent · {sentLines.filter((l) => l.status !== "void").length} active lines
           </div>
         </div>
-        {sentLines.filter((l) => l.status !== "void").length > 0 && (
+        {session.channel !== "takeaway" && sentLines.filter((l) => l.status !== "void").length > 0 && (
           <Button
             variant={session.status === "bill_requested" ? "default" : "outline"}
             size="sm"
