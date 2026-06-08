@@ -221,28 +221,34 @@ export function TablesGrid() {
             {filteredGroups.length} of {groups.length} tables
           </p>
         </div>
-        {hasRole("admin", "manager") && (
-          <Sheet open={manageOpen} onOpenChange={setManageOpen}>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="min-h-[44px]">
-                <Settings2 className="h-4 w-4" /> Manage
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
-              <SheetHeader>
-                <SheetTitle>Manage tables</SheetTitle>
-              </SheetHeader>
-              <ManageGroups
-                groups={sortedGroups}
-                waiters={waiters}
-                restaurantId={restaurantId!}
-                onChanged={load}
-                canDelete={hasRole("admin")}
-              />
-            </SheetContent>
-          </Sheet>
-        )}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="min-h-[44px]" onClick={openTakeaway}>
+            <ShoppingBag className="h-4 w-4" /> Takeaway
+          </Button>
+          {hasRole("admin", "manager") && (
+            <Sheet open={manageOpen} onOpenChange={setManageOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="min-h-[44px]">
+                  <Settings2 className="h-4 w-4" /> Manage
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>Manage tables</SheetTitle>
+                </SheetHeader>
+                <ManageGroups
+                  groups={sortedGroups}
+                  waiters={waiters}
+                  restaurantId={restaurantId!}
+                  onChanged={load}
+                  canDelete={hasRole("admin")}
+                />
+              </SheetContent>
+            </Sheet>
+          )}
+        </div>
       </header>
+
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
