@@ -145,12 +145,12 @@ export function TakeawaySettleDialog({
       const { data, error } = await supabase.rpc("settle_takeaway", {
         _session_id: sessionId,
         _items: draftItems,
-        _kot_note: kotNote,
+        _kot_note: kotNote ?? "",
         _params: params,
         _payments: payArr,
       });
       if (error) throw error;
-      onSettled(data as TakeawaySettleResult);
+      onSettled(data as unknown as TakeawaySettleResult);
     } catch (e) {
       toast.error(humanError((e as Error).message ?? "Settle failed"));
     } finally {
