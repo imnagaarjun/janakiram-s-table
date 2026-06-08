@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, Users, CalendarCheck2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,13 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import { compareCodes, todayIsoDate, type DiningTable } from "@/lib/tables";
+import { todayIsoDate } from "@/lib/tables";
 
 interface Waiter {
   id: string;
@@ -31,37 +25,16 @@ interface Waiter {
   is_active: boolean;
   payroll_ref: string | null;
 }
-interface Allocation {
-  id: string;
-  date: string;
-  waiter_id: string;
-  table_code: string;
-  shift: "morning" | "evening" | "full";
-}
 
 export function WaitersPanel() {
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Waiters</h1>
-      <Tabs defaultValue="registry">
-        <TabsList className="mb-4">
-          <TabsTrigger value="registry" className="gap-2">
-            <Users className="h-4 w-4" /> Registry
-          </TabsTrigger>
-          <TabsTrigger value="allocations" className="gap-2">
-            <CalendarCheck2 className="h-4 w-4" /> Today's allocation
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="registry">
-          <Registry />
-        </TabsContent>
-        <TabsContent value="allocations">
-          <Allocations />
-        </TabsContent>
-      </Tabs>
+      <Registry />
     </div>
   );
 }
+
 
 function Registry() {
   const { profile } = useAuth();
