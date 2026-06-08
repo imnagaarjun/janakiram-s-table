@@ -10,7 +10,11 @@ function formatIST(d: Date): string {
   });
 }
 
-export function StatusPill() {
+interface StatusPillProps {
+  fixed?: boolean;
+}
+
+export function StatusPill({ fixed = true }: StatusPillProps) {
   const s = useOnlineStatus();
   const [now, setNow] = useState<string>(() => formatIST(new Date()));
 
@@ -31,7 +35,7 @@ export function StatusPill() {
 
   return (
     <div
-      className="fixed top-2 right-2 z-50 flex items-center gap-1.5 rounded-full bg-surface/90 px-2 py-1 ring-1 ring-border shadow-sm pointer-events-none backdrop-blur"
+      className={`${fixed ? "fixed top-2 right-2 z-50" : ""} flex items-center gap-1.5 rounded-full bg-surface/90 px-2 py-1 ring-1 ring-border shadow-sm pointer-events-none backdrop-blur`}
       role="status"
       aria-label={`${label} · ${now} IST`}
       title={`${label} · ${now} IST`}

@@ -45,70 +45,74 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (mode === "tablet") {
     return (
-      <div className="min-h-screen flex bg-background">
-        <StatusPill />
+      <div className="min-h-screen flex flex-col bg-background">
         <WaiterNotifier />
-        <aside className="w-56 shrink-0 border-r bg-surface flex flex-col p-3 gap-1">
-          <div className="px-2 py-3 mb-2">
-            <div className="text-sm font-bold text-foreground">Hotel Sri Janakiram</div>
-            <div className="text-xs text-muted-foreground">{roles.join(", ") || "—"}</div>
-          </div>
-          {nav.map((n) => {
-            const active = pathname === n.to || pathname.startsWith(n.to + "/");
-            return (
-              <Link
-                key={n.to}
-                to={n.to}
-                className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
-                  active ? "bg-primary text-primary-foreground" : "hover:bg-accent text-foreground"
-                }`}
-              >
-                <n.icon className="h-5 w-5" />
-                <span>{n.label}</span>
-              </Link>
-            );
-          })}
-          {(roles.includes("admin") || roles.includes("manager")) && (
-            <div className="mt-auto flex flex-col gap-1">
-              <Link
-                to="/stock"
-                className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
-                  pathname.startsWith("/stock")
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent text-foreground"
-                }`}
-              >
-                <Boxes className="h-5 w-5" />
-                <span>Daily Stock</span>
-              </Link>
-              <Link
-                to="/waiters"
-                className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
-                  pathname.startsWith("/waiters")
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent text-foreground"
-                }`}
-              >
-                <Users className="h-5 w-5" />
-                <span>Waiters</span>
-              </Link>
+        <div className="h-9 shrink-0 border-b bg-surface flex items-center justify-end px-3">
+          <StatusPill fixed={false} />
+        </div>
+        <div className="flex-1 flex overflow-hidden">
+          <aside className="w-56 shrink-0 border-r bg-surface flex flex-col p-3 gap-1">
+            <div className="px-2 py-3 mb-2">
+              <div className="text-sm font-bold text-foreground">Hotel Sri Janakiram</div>
+              <div className="text-xs text-muted-foreground">{roles.join(", ") || "—"}</div>
             </div>
-          )}
-          {roles.includes("admin") && (
-            <Link
-              to="/settings"
-              className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
-                pathname.startsWith("/settings")
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-accent text-foreground"
-              }`}
-            >
-              <Settings className="h-5 w-5" />
-              <span>Settings</span>
-            </Link>
-          )}
-        </aside>
-        <main className="flex-1 overflow-y-auto">{children}</main>
+            {nav.map((n) => {
+              const active = pathname === n.to || pathname.startsWith(n.to + "/");
+              return (
+                <Link
+                  key={n.to}
+                  to={n.to}
+                  className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
+                    active ? "bg-primary text-primary-foreground" : "hover:bg-accent text-foreground"
+                  }`}
+                >
+                  <n.icon className="h-5 w-5" />
+                  <span>{n.label}</span>
+                </Link>
+              );
+            })}
+            {(roles.includes("admin") || roles.includes("manager")) && (
+              <div className="mt-auto flex flex-col gap-1">
+                <Link
+                  to="/stock"
+                  className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
+                    pathname.startsWith("/stock")
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent text-foreground"
+                  }`}
+                >
+                  <Boxes className="h-5 w-5" />
+                  <span>Daily Stock</span>
+                </Link>
+                <Link
+                  to="/waiters"
+                  className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
+                    pathname.startsWith("/waiters")
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent text-foreground"
+                  }`}
+                >
+                  <Users className="h-5 w-5" />
+                  <span>Waiters</span>
+                </Link>
+              </div>
+            )}
+            {roles.includes("admin") && (
+              <Link
+                to="/settings"
+                className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium min-h-[48px] ${
+                  pathname.startsWith("/settings")
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-accent text-foreground"
+                }`}
+              >
+                <Settings className="h-5 w-5" />
+                <span>Settings</span>
+              </Link>
+            )}
+          </aside>
+          <main className="flex-1 overflow-y-auto">{children}</main>
+        </div>
       </div>
     );
   }
@@ -116,8 +120,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Phone: top header thin + content + bottom tab bar
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <StatusPill />
       <WaiterNotifier />
+      <div className="h-9 shrink-0 border-b bg-surface flex items-center justify-end px-3">
+        <StatusPill fixed={false} />
+      </div>
       <main className="flex-1 overflow-y-auto pb-20">{children}</main>
       <nav
         className="fixed bottom-0 inset-x-0 z-40 border-t bg-surface flex justify-around items-stretch"
