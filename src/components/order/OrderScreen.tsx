@@ -58,6 +58,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [sentKots, setSentKots] = useState<SentKot[]>([]);
   const [sentLines, setSentLines] = useState<SentLine[]>([]);
+  const [prices, setPrices] = useState<Map<string, number>>(new Map());
   const [activeCat, setActiveCat] = useState<string>(FAV_KEY);
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [popup, setPopup] = useState<MenuItem | null>(null);
