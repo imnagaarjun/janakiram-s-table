@@ -12,6 +12,7 @@ import { ItemQtyDialog } from "./ItemQtyDialog";
 import { VoidDialog } from "./VoidDialog";
 import { computeBill, type BillLine } from "@/lib/billing";
 import { printBill } from "@/lib/print-bill";
+import { printKOT } from "@/lib/print-kot";
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import {
   availableFor,
