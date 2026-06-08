@@ -60,7 +60,8 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [sentKots, setSentKots] = useState<SentKot[]>([]);
   const [sentLines, setSentLines] = useState<SentLine[]>([]);
-  const [prices, setPrices] = useState<Map<string, number>>(new Map());
+  const [prices, setPrices] = useState<Map<string, { inclusive: number; base: number; gst: number }>>(new Map());
+  const [restaurant, setRestaurant] = useState<{ name: string | null; address: string | null; gstin: string | null; fssai: string | null; phone: string | null; service_charge_pct: number } | null>(null);
   const [activeCat, setActiveCat] = useState<string>(FAV_KEY);
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [popup, setPopup] = useState<MenuItem | null>(null);
