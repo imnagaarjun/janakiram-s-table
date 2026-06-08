@@ -92,7 +92,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     const sk = new Set(((kRes.data ?? []) as SentKot[]).map((k) => k.id));
     setSentLines(((kiRes.data ?? []) as SentLine[]).filter((l) => sk.has(l.kot_id)));
     const channel = (sRes.data as SessionRow | null)?.channel ?? "dinein";
-    const [pRes, rRes] = await Promise.all([
+    const [pRes, restRes] = await Promise.all([
       db.from("menu_prices").select("menu_item_id,inclusive_price,base_price,gst_rate").eq("channel_key", channel),
       db.from("restaurants").select("name,address,gstin,fssai,phone,service_charge_pct").limit(1).maybeSingle(),
     ]);
