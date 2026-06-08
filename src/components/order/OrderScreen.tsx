@@ -315,11 +315,14 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
                 return;
               }
               const { error } = await supabase.rpc("request_bill", { _session_id: sessionId });
-              if (error) toast.error(error.message);
-              else {
-                toast.success("Bill requested — cashier notified");
-                setSession((s) => (s ? { ...s, status: "bill_requested" } : s));
+              if (error) {
+                toast.error(error.message);
+                return;
               }
+              toast.success("Bill requested — cashier notified");
+              setSession((s) => (s ? { ...s, status: "bill_requested" } : s));
+              // Generate pro-forma bill PDF (same flow as KOT send)
+              printProForma("PRO-FORMA · Bill Requested");
             }}
           >
             {session.status === "bill_requested" ? "Open Bill" : "Request Bill"}
