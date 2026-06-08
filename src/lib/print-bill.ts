@@ -36,8 +36,9 @@ export function printBill(opts: {
   notes?: string | null;
   duplicate?: boolean;
   waiterName?: string | null;
+  paidMarker?: boolean;
 }) {
-  const { restaurant, invoice_no, issued_at, table_label, pax, lines, totals, payments, notes, duplicate, waiterName } = opts;
+  const { restaurant, invoice_no, issued_at, table_label, pax, lines, totals, payments, notes, duplicate, waiterName, paidMarker } = opts;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${invoice_no}</title>
 <style>
   @page { size: 80mm auto; margin: 4mm; }
@@ -54,8 +55,10 @@ export function printBill(opts: {
   .grand { font-weight: bold; font-size: 14px; border-top: 1px solid #000; padding-top: 4px; margin-top: 4px; }
   .footer { text-align: center; font-size: 10px; margin-top: 10px; }
   .dup { text-align: center; font-weight: bold; border: 2px solid #000; padding: 2px; margin-bottom: 6px; }
+  .paid { text-align: center; font-weight: bold; font-size: 16px; border: 2px solid #000; padding: 4px; margin: 6px 0; letter-spacing: 4px; }
 </style></head><body>
 ${duplicate ? `<div class="dup">DUPLICATE / REPRINT</div>` : ""}
+${paidMarker ? `<div class="paid">PAID</div>` : ""}
 <h1>${escape(restaurant.name ?? "—")}</h1>
 ${restaurant.address ? `<div class="addr">${escape(restaurant.address)}</div>` : ""}
 <div class="meta">
