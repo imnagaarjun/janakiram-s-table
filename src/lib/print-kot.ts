@@ -19,8 +19,9 @@ export function printKOT(opts: {
   pax: number;
   lines: KotLine[];
   note?: string | null;
+  waiterName?: string | null;
 }) {
-  const { restaurantName, kotNo, sentAt, tableLabel, pax, lines, note } = opts;
+  const { restaurantName, kotNo, sentAt, tableLabel, pax, lines, note, waiterName } = opts;
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>KOT ${kotNo}</title>
 <style>
