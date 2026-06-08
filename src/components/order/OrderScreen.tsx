@@ -63,7 +63,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [sentLines, setSentLines] = useState<SentLine[]>([]);
   const [prices, setPrices] = useState<Map<string, { inclusive: number; base: number; gst: number }>>(new Map());
   const [restaurant, setRestaurant] = useState<{ name: string | null; address: string | null; gstin: string | null; fssai: string | null; phone: string | null; service_charge_pct: number } | null>(null);
-  const [activeCat, setActiveCat] = useState<string>(FAV_KEY);
+  const [activeCat, setActiveCat] = useState<string>(ALL_KEY);
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [popup, setPopup] = useState<MenuItem | null>(null);
   const [kotNote, setKotNote] = useState("");
@@ -148,9 +148,22 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   );
 
   const shownItems = useMemo(() => {
-    if (activeCat === FAV_KEY) return favorites;
+    if (activeCat === ALL_KEY) {
+      // All active items, ordered by category sequence then display order
+      const catIndex = new Map<string, number>();
+      categories.forEach((c, idx) => catIndex.set(c.id, idx));
+      return items
+        .filter((i) => i.is_active)
+        .slice()
+        .sort((a, b) => {
+          const ai = a.category_id ? catIndex.get(a.category_id) ?? 999 : 999;
+          const bi = b.category_id ? catIndex.get(b.category_id) ?? 999 : 999;
+          if (ai !== bi) return ai - bi;
+          return (a.display_order ?? 0) - (b.display_order ?? 0);
+        });
+    }
     return items.filter((i) => i.is_active && i.category_id === activeCat);
-  }, [activeCat, items, favorites]);
+  }, [activeCat, items, categories]);
 
   const draftCount = draft.reduce((s, d) => s + d.qty, 0);
 
@@ -367,9 +380,9 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
           {/* Categories */}
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 mb-3">
             <CategoryBtn
-              active={activeCat === FAV_KEY}
-              onClick={() => setActiveCat(FAV_KEY)}
-              label="★ Favorites"
+              active={activeCat === ALL_KEY}
+              onClick={() => setActiveCat(ALL_KEY)}
+              label="All"
             />
             {visibleCats.map((c) => (
               <CategoryBtn
