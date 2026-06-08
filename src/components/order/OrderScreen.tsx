@@ -14,6 +14,7 @@ import { computeBill, type BillLine } from "@/lib/billing";
 import { printBill } from "@/lib/print-bill";
 import { printKOT } from "@/lib/print-kot";
 import { useDeviceMode } from "@/hooks/use-device-mode";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   availableFor,
   parseRpcError,
@@ -53,6 +54,8 @@ const ALL_KEY = "__all__";
 export function OrderScreen({ sessionId }: { sessionId: string }) {
   const nav = useNavigate();
   const mode = useDeviceMode();
+  const { profile } = useAuth();
+  const waiterName = profile?.name ?? null;
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<SessionRow | null>(null);
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -184,7 +187,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
 
   const sendingRef = useRef(false);
 
-  function printProForma(invoiceTag: string, extraDraft: DraftLine[] = []) {
+  function printProForma(invoiceTag: string, extraDraft: DraftLine[] = [], opts?: { noteOverride?: string | null }) {
     try {
       const agg = new Map<string, number>();
       sentLines.filter((l) => l.status !== "void").forEach((l) => {
@@ -221,7 +224,8 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         lines: billLines,
         totals,
         payments: [],
-        notes: "*** PRO-FORMA — NOT A TAX INVOICE ***",
+        notes: opts?.noteOverride !== undefined ? opts.noteOverride : "*** PRO-FORMA — NOT A TAX INVOICE ***",
+        waiterName,
       });
     } catch (e) {
       console.error("Print preview failed", e);
@@ -257,14 +261,24 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       pax: session?.pax ?? 1,
       lines: draft.map((d) => ({ name: d.name, qty: d.qty, note: d.note })),
       note: kotNote || undefined,
+      waiterName,
     });
+
+    // Takeaway: print the bill at the counter simultaneously and flip the
+    // session to bill_requested so the cashier can settle it.
+    if (session?.channel === "takeaway") {
+      printProForma(`BILL · K-${String(kotNo).padStart(4, "0")}`, draft, { noteOverride: null });
+      supabase.rpc("request_bill", { _session_id: sessionId }).then(({ error }) => {
+        if (error) console.error("request_bill failed", error);
+      });
+    }
 
     setDraft([]);
     setKotNote("");
     setCartOpen(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, kotNote, sessionId, restaurant, session, load]);
+  }, [draft, kotNote, sessionId, restaurant, session, load, waiterName]);
 
   // Keyboard shortcut: Ctrl/Cmd+Enter to send KOT (works anywhere on the page)
   useEffect(() => {
@@ -327,7 +341,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
             {sentKots.length} KOT sent · {sentLines.filter((l) => l.status !== "void").length} active lines
           </div>
         </div>
-        {sentLines.filter((l) => l.status !== "void").length > 0 && (
+        {session.channel !== "takeaway" && sentLines.filter((l) => l.status !== "void").length > 0 && (
           <Button
             variant={session.status === "bill_requested" ? "default" : "outline"}
             size="sm"

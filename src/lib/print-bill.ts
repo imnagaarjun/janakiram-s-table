@@ -35,13 +35,15 @@ export function printBill(opts: {
   payments: { mode: string; amount: number; ref_no?: string | null }[];
   notes?: string | null;
   duplicate?: boolean;
+  waiterName?: string | null;
 }) {
-  const { restaurant, invoice_no, issued_at, table_label, pax, lines, totals, payments, notes, duplicate } = opts;
+  const { restaurant, invoice_no, issued_at, table_label, pax, lines, totals, payments, notes, duplicate, waiterName } = opts;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${invoice_no}</title>
 <style>
   @page { size: 80mm auto; margin: 4mm; }
   body { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: #000; max-width: 320px; margin: 0 auto; padding: 8px; }
-  h1 { font-size: 16px; text-align: center; margin: 0 0 4px; }
+  h1 { font-size: 17px; text-align: center; margin: 0 0 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .addr { text-align: center; font-size: 12px; margin: 0 0 6px; font-weight: 600; }
   .meta { text-align: center; font-size: 11px; margin-bottom: 8px; }
   .row { display: flex; justify-content: space-between; gap: 8px; }
   table { width: 100%; border-collapse: collapse; margin: 6px 0; }
@@ -55,13 +57,14 @@ export function printBill(opts: {
 </style></head><body>
 ${duplicate ? `<div class="dup">DUPLICATE / REPRINT</div>` : ""}
 <h1>${escape(restaurant.name ?? "—")}</h1>
+${restaurant.address ? `<div class="addr">${escape(restaurant.address)}</div>` : ""}
 <div class="meta">
-  ${escape(restaurant.address ?? "")}<br>
   ${restaurant.phone ? `Ph: ${escape(restaurant.phone)} · ` : ""}${restaurant.gstin ? `GSTIN: ${escape(restaurant.gstin)}` : ""}
   ${restaurant.fssai ? `<br>FSSAI: ${escape(restaurant.fssai)}` : ""}
 </div>
 <div class="row"><span>Bill: <b>${invoice_no}</b></span><span>${new Date(issued_at).toLocaleString()}</span></div>
 <div class="row"><span>${table_label}</span><span>Pax: ${pax}</span></div>
+${waiterName ? `<div class="row"><span>Server: ${escape(waiterName)}</span><span></span></div>` : ""}
 <table>
   <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amt</th></tr></thead>
   <tbody>

@@ -19,8 +19,9 @@ export function printKOT(opts: {
   pax: number;
   lines: KotLine[];
   note?: string | null;
+  waiterName?: string | null;
 }) {
-  const { restaurantName, kotNo, sentAt, tableLabel, pax, lines, note } = opts;
+  const { restaurantName, kotNo, sentAt, tableLabel, pax, lines, note, waiterName } = opts;
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>KOT ${kotNo}</title>
 <style>
@@ -40,6 +41,7 @@ export function printKOT(opts: {
 ${restaurantName ? `<div class="meta">${escapeHtml(restaurantName)}</div>` : ""}
 <div class="row"><span><b>${escapeHtml(kotNo)}</b></span><span>${new Date(sentAt).toLocaleString()}</span></div>
 <div class="row"><span>${escapeHtml(tableLabel)}</span><span>Pax: ${pax}</span></div>
+${waiterName ? `<div class="row"><span>Server: ${escapeHtml(waiterName)}</span><span></span></div>` : ""}
 <table>
   <thead><tr><th>Item</th><th>Qty</th></tr></thead>
   <tbody>

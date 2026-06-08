@@ -65,7 +65,8 @@ interface DraftPayment {
 export function BillPanel({ sessionId }: { sessionId: string }) {
   const nav = useNavigate();
   const mode = useDeviceMode();
-  const { hasRole } = useAuth();
+  const { hasRole, profile } = useAuth();
+  const waiterName = profile?.name ?? null;
   const isTablet = mode === "tablet";
 
   const [loading, setLoading] = useState(true);
@@ -307,6 +308,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       },
       payments: existingPayments,
       duplicate: true,
+      waiterName,
     });
   }
 
@@ -331,6 +333,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       payments: payments
         .filter((p) => Number(p.amount) > 0)
         .map((p) => ({ mode: p.mode, amount: Number(p.amount), ref_no: p.ref_no || null })),
+      waiterName,
     });
   }
 
