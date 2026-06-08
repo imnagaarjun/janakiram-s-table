@@ -650,18 +650,6 @@ function DraftBody({
   onVoid: (l: SentLine) => void;
   sendLabel?: string;
 }) {
-  draft: DraftLine[];
-  kotNote: string;
-  setKotNote: (s: string) => void;
-  sentKots: SentKot[];
-  sentLines: SentLine[];
-  itemsById: Map<string, MenuItem>;
-  prices: Map<string, { inclusive: number; base: number; gst: number }>;
-  onUpdate: (key: string, qty: number) => void;
-  onSend: () => void;
-  sending: boolean;
-  onVoid: (l: SentLine) => void;
-}) {
   const fmt = (n: number) => `₹${n.toFixed(2)}`;
   const priceOf = (mid: string) => prices.get(mid)?.inclusive ?? 0;
   const draftTotal = draft.reduce((s, d) => s + d.qty * priceOf(d.menu_item_id), 0);
@@ -806,7 +794,7 @@ function DraftBody({
           }`}
         >
           <Send className="h-5 w-5" />
-          {sending ? "Sending…" : `Send KOT (${draft.reduce((s, d) => s + d.qty, 0)})`}
+          {sending ? "Sending…" : `${sendLabel} (${draft.reduce((s, d) => s + d.qty, 0)})`}
           <span className="ml-2 hidden sm:inline rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider">⌘/Ctrl+↵</span>
         </Button>
       </div>
