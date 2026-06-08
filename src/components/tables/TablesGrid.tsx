@@ -332,10 +332,11 @@ export function TablesGrid() {
                       <button
                         key={code}
                         type="button"
+                        disabled={status === "inactive"}
                         onClick={() => openTile(code, status)}
                         className={`rounded-xl px-2 py-3 min-h-[64px] text-left border ${STATUS_CLASSES[status]} ${
-                          status === "free" || status === "inactive"
-                            ? ""
+                          status === "inactive"
+                            ? "opacity-90 cursor-not-allowed"
                             : "active:scale-[0.98] transition-transform"
                         }`}
                       >
