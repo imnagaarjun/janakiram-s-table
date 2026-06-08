@@ -308,6 +308,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       },
       payments: existingPayments,
       duplicate: true,
+      waiterName,
     });
   }
 
