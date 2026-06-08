@@ -183,7 +183,53 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       load(); // reconcile
       return;
     }
-    toast.success(`KOT K-${String((data as { kot_no: number }).kot_no).padStart(4, "0")} sent`);
+    const kotNo = (data as { kot_no: number }).kot_no;
+    toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
+
+    // Build combined lines (active sent + just-sent draft) for pro-forma bill print
+    try {
+      const agg = new Map<string, number>();
+      sentLines.filter((l) => l.status !== "void").forEach((l) => {
+        agg.set(l.menu_item_id, (agg.get(l.menu_item_id) ?? 0) + Number(l.qty));
+      });
+      draft.forEach((d) => {
+        agg.set(d.menu_item_id, (agg.get(d.menu_item_id) ?? 0) + d.qty);
+      });
+      const billLines: BillLine[] = Array.from(agg.entries()).map(([mid, qty]) => {
+        const p = prices.get(mid);
+        return {
+          menu_item_id: mid,
+          name: itemsById.get(mid)?.name ?? "Item",
+          qty,
+          inclusive_price: p?.inclusive ?? 0,
+          base_price: p?.base ?? 0,
+          gst_rate: p?.gst ?? 0,
+          line_total: qty * (p?.inclusive ?? 0),
+        };
+      });
+      if (billLines.length > 0 && restaurant && session) {
+        const totals = computeBill(billLines, {
+          service_charge_pct: restaurant.service_charge_pct ?? 0,
+          discount_amt: 0,
+          discount_pct: 0,
+          complimentary: false,
+        });
+        printBill({
+          restaurant,
+          invoice_no: `PREVIEW · K-${String(kotNo).padStart(4, "0")}`,
+          issued_at: new Date().toISOString(),
+          table_label: session.table_code ? `Table ${session.table_code}` : "Takeaway",
+          pax: session.pax,
+          lines: billLines,
+          totals,
+          payments: [],
+          notes: "*** PRO-FORMA — NOT A TAX INVOICE ***",
+        });
+      }
+    } catch (e) {
+      console.error("Print preview failed", e);
+    }
+
     setDraft([]);
     setKotNote("");
     setCartOpen(false);
