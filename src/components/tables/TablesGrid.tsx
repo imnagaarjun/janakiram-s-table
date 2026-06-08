@@ -605,7 +605,7 @@ function ManageGroups({
               <Select value={String(g.split_count)} onValueChange={(v) => update(g, { split_count: parseInt(v, 10) })}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
                     <SelectItem key={n} value={String(n)}>{n}</SelectItem>
                   ))}
                 </SelectContent>
@@ -613,16 +613,14 @@ function ManageGroups({
             </div>
             <div className="col-span-2">
               <Label className="text-[10px]">Seats</Label>
-              <Input
-                className="h-9"
-                type="number"
-                min={1}
-                defaultValue={g.seats}
-                onBlur={(e) => {
-                  const n = Math.max(1, parseInt(e.target.value, 10) || 1);
-                  if (n !== g.seats) update(g, { seats: n });
-                }}
-              />
+              <Select value={String(g.seats)} onValueChange={(v) => update(g, { seats: parseInt(v, 10) })}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="col-span-5">
               <Label className="text-[10px]">Waiter</Label>
