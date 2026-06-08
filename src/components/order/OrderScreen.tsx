@@ -261,14 +261,24 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       pax: session?.pax ?? 1,
       lines: draft.map((d) => ({ name: d.name, qty: d.qty, note: d.note })),
       note: kotNote || undefined,
+      waiterName,
     });
+
+    // Takeaway: print the bill at the counter simultaneously and flip the
+    // session to bill_requested so the cashier can settle it.
+    if (session?.channel === "takeaway") {
+      printProForma(`BILL · K-${String(kotNo).padStart(4, "0")}`, draft, { noteOverride: null });
+      supabase.rpc("request_bill", { _session_id: sessionId }).then(({ error }) => {
+        if (error) console.error("request_bill failed", error);
+      });
+    }
 
     setDraft([]);
     setKotNote("");
     setCartOpen(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, kotNote, sessionId, restaurant, session, load]);
+  }, [draft, kotNote, sessionId, restaurant, session, load, waiterName]);
 
   // Keyboard shortcut: Ctrl/Cmd+Enter to send KOT (works anywhere on the page)
   useEffect(() => {
