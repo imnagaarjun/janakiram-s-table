@@ -65,7 +65,8 @@ interface DraftPayment {
 export function BillPanel({ sessionId }: { sessionId: string }) {
   const nav = useNavigate();
   const mode = useDeviceMode();
-  const { hasRole } = useAuth();
+  const { hasRole, profile } = useAuth();
+  const waiterName = profile?.name ?? null;
   const isTablet = mode === "tablet";
 
   const [loading, setLoading] = useState(true);
