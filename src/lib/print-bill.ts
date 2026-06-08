@@ -42,7 +42,8 @@ export function printBill(opts: {
 <style>
   @page { size: 80mm auto; margin: 4mm; }
   body { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: #000; max-width: 320px; margin: 0 auto; padding: 8px; }
-  h1 { font-size: 16px; text-align: center; margin: 0 0 4px; }
+  h1 { font-size: 17px; text-align: center; margin: 0 0 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .addr { text-align: center; font-size: 12px; margin: 0 0 6px; font-weight: 600; }
   .meta { text-align: center; font-size: 11px; margin-bottom: 8px; }
   .row { display: flex; justify-content: space-between; gap: 8px; }
   table { width: 100%; border-collapse: collapse; margin: 6px 0; }
