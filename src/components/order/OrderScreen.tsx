@@ -429,7 +429,9 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         <Sheet open={cartOpen} onOpenChange={setCartOpen}>
           <SheetTrigger asChild>
             <Button
-              className="fixed right-3 z-30 h-14 rounded-full shadow-lg flex items-center gap-1.5"
+              className={`fixed right-3 z-30 h-14 rounded-full shadow-lg flex items-center gap-1.5 ${
+                draftCount > 0 ? "kot-pulse" : ""
+              }`}
               style={{ bottom: "calc(env(safe-area-inset-bottom) + 76px)" }}
             >
               <ShoppingBag className="h-5 w-5" />
