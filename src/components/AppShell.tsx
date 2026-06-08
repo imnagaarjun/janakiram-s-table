@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutGrid, Plus, BookOpen, BarChart3, MoreHorizontal, ChefHat, Settings, Boxes, Users } from "lucide-react";
+import { LayoutGrid, BookOpen, BarChart3, MoreHorizontal, ChefHat, Settings, Boxes, Users } from "lucide-react";
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusPill } from "@/components/StatusPill";
@@ -16,7 +16,6 @@ interface NavItem {
 
 const ALL_NAV: NavItem[] = [
   { to: "/tables", label: "Tables", icon: LayoutGrid, roles: ["admin", "manager", "cashier", "waiter"] },
-  { to: "/new-table", label: "New Table", icon: Plus, roles: ["admin", "manager", "waiter"] },
   { to: "/menu", label: "Menu", icon: BookOpen, roles: ["admin", "manager", "waiter", "cashier"] },
   { to: "/kds", label: "KDS", icon: ChefHat, roles: ["admin", "manager", "kitchen", "cashier"] },
   { to: "/reports", label: "Reports", icon: BarChart3, roles: ["admin", "manager", "cashier", "waiter"] },
@@ -35,7 +34,7 @@ function visibleNav(roles: AppRole[]): NavItem[] {
     return ALL_NAV.filter((n) => ["/tables", "/menu", "/kds", "/reports", "/more"].includes(n.to));
   }
   // Waiter
-  return ALL_NAV.filter((n) => ["/tables", "/new-table", "/menu", "/reports", "/more"].includes(n.to));
+  return ALL_NAV.filter((n) => ["/tables", "/menu", "/reports", "/more"].includes(n.to));
 }
 
 export function AppShell({ children }: { children: ReactNode }) {

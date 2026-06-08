@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Settings2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Settings2, Plus, Trash2, ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,6 +21,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   STATUS_CLASSES,
   STATUS_LABEL,
@@ -55,8 +62,9 @@ function groupCodeNumeric(code: string): number {
 
 export function TablesGrid() {
   const nav = useNavigate();
-  const { profile, hasRole } = useAuth();
+  const { profile, roles, hasRole } = useAuth();
   const restaurantId = profile?.restaurant_id;
+  const isWaiterOnly = roles.includes("waiter") && !hasRole("admin", "manager", "cashier");
 
   const [tables, setTables] = useState<DiningTable[]>([]);
   const [groups, setGroups] = useState<TableGroup[]>([]);
@@ -66,6 +74,12 @@ export function TablesGrid() {
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "free">("all");
   const [waiterFilter, setWaiterFilter] = useState<string>("all");
   const [manageOpen, setManageOpen] = useState(false);
+
+  // Start-order dialog state
+  const [picker, setPicker] = useState<{ kind: "table"; code: string } | { kind: "takeaway" } | null>(null);
+  const [channel, setChannel] = useState<"dinein" | "takeaway">("dinein");
+  const [pax, setPax] = useState("2");
+  const [starting, setStarting] = useState(false);
 
   const load = useCallback(async () => {
     if (!restaurantId) return;
@@ -90,6 +104,14 @@ export function TablesGrid() {
     return m;
   }, [tables]);
 
+  const myWaiterId = useMemo(() => {
+    if (!isWaiterOnly || !profile) return null;
+    const w = waiters.find(
+      (x) => x.name.trim().toLowerCase() === profile.name.trim().toLowerCase(),
+    );
+    return w?.id ?? null;
+  }, [isWaiterOnly, profile, waiters]);
+
   const sortedGroups = useMemo(
     () =>
       [...groups].sort(
@@ -100,6 +122,7 @@ export function TablesGrid() {
 
   const filteredGroups = useMemo(() => {
     return sortedGroups.filter((g) => {
+      if (isWaiterOnly && g.waiter_id !== myWaiterId) return false;
       if (waiterFilter !== "all" && g.waiter_id !== waiterFilter) return false;
       if (statusFilter !== "all") {
         const codes = childCodesFor(g);
@@ -112,11 +135,12 @@ export function TablesGrid() {
       }
       return true;
     });
-  }, [sortedGroups, statusFilter, waiterFilter, tableByCode]);
+  }, [sortedGroups, statusFilter, waiterFilter, tableByCode, isWaiterOnly, myWaiterId]);
 
   const openTile = useCallback(
     async (code: string, status: TableStatus) => {
-      if (status === "free" || status === "inactive") return;
+      if (status === "inactive") return;
+      // Existing open/bill_requested session → resume
       const { data } = await db
         .from("order_sessions")
         .select("id,status")
@@ -125,15 +149,60 @@ export function TablesGrid() {
         .order("opened_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (!data) return;
-      if (data.status === "bill_requested") {
-        nav({ to: "/bill/$sessionId", params: { sessionId: data.id } });
-      } else {
-        nav({ to: "/order/$sessionId", params: { sessionId: data.id } });
+      if (data) {
+        if (data.status === "bill_requested") {
+          nav({ to: "/bill/$sessionId", params: { sessionId: data.id } });
+        } else {
+          nav({ to: "/order/$sessionId", params: { sessionId: data.id } });
+        }
+        return;
+      }
+      // Free tile → open start-order dialog
+      if (status === "free" || status === "seated_no_kot") {
+        setChannel("dinein");
+        setPax("2");
+        setPicker({ kind: "table", code });
       }
     },
     [nav],
   );
+
+  const openTakeaway = useCallback(() => {
+    setChannel("takeaway");
+    setPax("1");
+    setPicker({ kind: "takeaway" });
+  }, []);
+
+  const startOrder = useCallback(async () => {
+    if (!profile || !picker) return;
+    setStarting(true);
+    const isTakeaway = picker.kind === "takeaway";
+    const tableCode = isTakeaway ? null : picker.code;
+    const { data, error } = await db
+      .from("order_sessions")
+      .insert({
+        restaurant_id: profile.restaurant_id,
+        table_code: tableCode,
+        channel: isTakeaway ? "takeaway" : channel,
+        pax: Math.max(1, parseInt(pax, 10) || 1),
+      })
+      .select("id")
+      .single();
+    setStarting(false);
+    if (error || !data) {
+      toast.error(error?.message ?? "Failed to open order");
+      return;
+    }
+    if (!isTakeaway && tableCode) {
+      const t = tableByCode.get(tableCode);
+      if (t) {
+        await db.from("tables").update({ status: "seated_no_kot" }).eq("id", t.id);
+      }
+    }
+    setPicker(null);
+    nav({ to: "/order/$sessionId", params: { sessionId: (data as { id: string }).id } });
+  }, [profile, picker, channel, pax, tableByCode, nav]);
+
 
   if (loading) {
     return (
@@ -152,28 +221,34 @@ export function TablesGrid() {
             {filteredGroups.length} of {groups.length} tables
           </p>
         </div>
-        {hasRole("admin", "manager") && (
-          <Sheet open={manageOpen} onOpenChange={setManageOpen}>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="min-h-[44px]">
-                <Settings2 className="h-4 w-4" /> Manage
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
-              <SheetHeader>
-                <SheetTitle>Manage tables</SheetTitle>
-              </SheetHeader>
-              <ManageGroups
-                groups={sortedGroups}
-                waiters={waiters}
-                restaurantId={restaurantId!}
-                onChanged={load}
-                canDelete={hasRole("admin")}
-              />
-            </SheetContent>
-          </Sheet>
-        )}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="min-h-[44px]" onClick={openTakeaway}>
+            <ShoppingBag className="h-4 w-4" /> Takeaway
+          </Button>
+          {hasRole("admin", "manager") && (
+            <Sheet open={manageOpen} onOpenChange={setManageOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="min-h-[44px]">
+                  <Settings2 className="h-4 w-4" /> Manage
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+                <SheetHeader>
+                  <SheetTitle>Manage tables</SheetTitle>
+                </SheetHeader>
+                <ManageGroups
+                  groups={sortedGroups}
+                  waiters={waiters}
+                  restaurantId={restaurantId!}
+                  onChanged={load}
+                  canDelete={hasRole("admin")}
+                />
+              </SheetContent>
+            </Sheet>
+          )}
+        </div>
       </header>
+
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -257,10 +332,11 @@ export function TablesGrid() {
                       <button
                         key={code}
                         type="button"
+                        disabled={status === "inactive"}
                         onClick={() => openTile(code, status)}
                         className={`rounded-xl px-2 py-3 min-h-[64px] text-left border ${STATUS_CLASSES[status]} ${
-                          status === "free" || status === "inactive"
-                            ? ""
+                          status === "inactive"
+                            ? "opacity-90 cursor-not-allowed"
                             : "active:scale-[0.98] transition-transform"
                         }`}
                       >
@@ -277,6 +353,54 @@ export function TablesGrid() {
           })}
         </div>
       )}
+
+      <Dialog open={!!picker} onOpenChange={(v) => !v && setPicker(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {picker?.kind === "takeaway"
+                ? "New takeaway order"
+                : picker?.kind === "table"
+                  ? `Start Table ${picker.code}`
+                  : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {picker?.kind === "table" && (
+              <div>
+                <Label className="text-xs">Channel</Label>
+                <Select value={channel} onValueChange={(v) => setChannel(v as typeof channel)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dinein">Dine-in</SelectItem>
+                    <SelectItem value="takeaway">Takeaway</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label className="text-xs">Pax</Label>
+              <Input
+                type="number"
+                min={1}
+                value={pax}
+                onChange={(e) => setPax(e.target.value)}
+                className="text-2xl font-bold h-14 text-center"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPicker(null)}>
+              Cancel
+            </Button>
+            <Button disabled={starting} onClick={startOrder}>
+              {starting ? "Opening…" : "Open order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

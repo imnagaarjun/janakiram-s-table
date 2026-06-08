@@ -17,7 +17,6 @@ import { Route as AuthenticatedTablesRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedStockRouteImport } from './routes/_authenticated/stock'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
-import { Route as AuthenticatedNewTableRouteImport } from './routes/_authenticated/new-table'
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
 import { Route as AuthenticatedMenuRouteImport } from './routes/_authenticated/menu'
 import { Route as AuthenticatedKdsRouteImport } from './routes/_authenticated/kds'
@@ -63,11 +62,6 @@ const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedNewTableRoute = AuthenticatedNewTableRouteImport.update({
-  id: '/new-table',
-  path: '/new-table',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
 const AuthenticatedMoreRoute = AuthenticatedMoreRouteImport.update({
   id: '/more',
   path: '/more',
@@ -102,7 +96,6 @@ export interface FileRoutesByFullPath {
   '/kds': typeof AuthenticatedKdsRoute
   '/menu': typeof AuthenticatedMenuRoute
   '/more': typeof AuthenticatedMoreRoute
-  '/new-table': typeof AuthenticatedNewTableRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/stock': typeof AuthenticatedStockRoute
@@ -117,7 +110,6 @@ export interface FileRoutesByTo {
   '/kds': typeof AuthenticatedKdsRoute
   '/menu': typeof AuthenticatedMenuRoute
   '/more': typeof AuthenticatedMoreRoute
-  '/new-table': typeof AuthenticatedNewTableRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/stock': typeof AuthenticatedStockRoute
@@ -134,7 +126,6 @@ export interface FileRoutesById {
   '/_authenticated/kds': typeof AuthenticatedKdsRoute
   '/_authenticated/menu': typeof AuthenticatedMenuRoute
   '/_authenticated/more': typeof AuthenticatedMoreRoute
-  '/_authenticated/new-table': typeof AuthenticatedNewTableRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/stock': typeof AuthenticatedStockRoute
@@ -151,7 +142,6 @@ export interface FileRouteTypes {
     | '/kds'
     | '/menu'
     | '/more'
-    | '/new-table'
     | '/reports'
     | '/settings'
     | '/stock'
@@ -166,7 +156,6 @@ export interface FileRouteTypes {
     | '/kds'
     | '/menu'
     | '/more'
-    | '/new-table'
     | '/reports'
     | '/settings'
     | '/stock'
@@ -182,7 +171,6 @@ export interface FileRouteTypes {
     | '/_authenticated/kds'
     | '/_authenticated/menu'
     | '/_authenticated/more'
-    | '/_authenticated/new-table'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/stock'
@@ -256,13 +244,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReportsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/new-table': {
-      id: '/_authenticated/new-table'
-      path: '/new-table'
-      fullPath: '/new-table'
-      preLoaderRoute: typeof AuthenticatedNewTableRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
     '/_authenticated/more': {
       id: '/_authenticated/more'
       path: '/more'
@@ -305,7 +286,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedKdsRoute: typeof AuthenticatedKdsRoute
   AuthenticatedMenuRoute: typeof AuthenticatedMenuRoute
   AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
-  AuthenticatedNewTableRoute: typeof AuthenticatedNewTableRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStockRoute: typeof AuthenticatedStockRoute
@@ -319,7 +299,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedKdsRoute: AuthenticatedKdsRoute,
   AuthenticatedMenuRoute: AuthenticatedMenuRoute,
   AuthenticatedMoreRoute: AuthenticatedMoreRoute,
-  AuthenticatedNewTableRoute: AuthenticatedNewTableRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStockRoute: AuthenticatedStockRoute,
@@ -340,3 +319,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
