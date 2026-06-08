@@ -518,6 +518,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               onSend={sendKot}
               sending={sending}
               onVoid={setVoidLine}
+              sendLabel={session.channel === "takeaway" ? "Settle & Send KOT" : "Send KOT"}
             />
           </aside>
         )}
