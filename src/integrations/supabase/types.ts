@@ -1025,6 +1025,16 @@ export type Database = {
         Args: { _params: Json; _payments: Json; _session_id: string }
         Returns: Json
       }
+      settle_takeaway: {
+        Args: {
+          _items: Json
+          _kot_note: string
+          _params: Json
+          _payments: Json
+          _session_id: string
+        }
+        Returns: Json
+      }
       sync_table_group: { Args: { _group_id: string }; Returns: undefined }
       verify_staff_pin: { Args: { _pin: string }; Returns: string }
       void_kot_item: {
