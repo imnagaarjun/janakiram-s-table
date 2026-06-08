@@ -41,7 +41,7 @@ export function printKOT(opts: {
 ${restaurantName ? `<div class="meta">${escapeHtml(restaurantName)}</div>` : ""}
 <div class="row"><span><b>${escapeHtml(kotNo)}</b></span><span>${new Date(sentAt).toLocaleString()}</span></div>
 <div class="row"><span>${escapeHtml(tableLabel)}</span><span>Pax: ${pax}</span></div>
-<table>
+${waiterName ? `<div class="row"><span>Server: ${escapeHtml(waiterName)}</span><span></span></div>` : ""}
   <thead><tr><th>Item</th><th>Qty</th></tr></thead>
   <tbody>
     ${lines
