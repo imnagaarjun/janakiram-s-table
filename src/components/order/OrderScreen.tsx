@@ -445,6 +445,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         onOpenChange={(v) => !v && setPopup(null)}
         item={popup}
         available={popupAvail}
+        tableLabel={session.table_code ? `Table ${session.table_code}` : "Takeaway"}
         onAdd={(qty, note) => popup && addToDraft(popup, qty, note)}
       />
 
