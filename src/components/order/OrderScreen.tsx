@@ -54,6 +54,8 @@ const ALL_KEY = "__all__";
 export function OrderScreen({ sessionId }: { sessionId: string }) {
   const nav = useNavigate();
   const mode = useDeviceMode();
+  const { profile } = useAuth();
+  const waiterName = profile?.name ?? null;
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<SessionRow | null>(null);
   const [items, setItems] = useState<MenuItem[]>([]);
