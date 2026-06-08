@@ -27,7 +27,7 @@ export function ItemQtyDialog({ open, onOpenChange, item, available, onAdd }: Pr
 
   useEffect(() => {
     if (open) {
-      setQty(cap === 0 ? 0 : 1);
+      setQty(0);
       setNote("");
     }
   }, [open, cap]);
