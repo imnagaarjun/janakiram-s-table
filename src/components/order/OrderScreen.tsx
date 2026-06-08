@@ -237,6 +237,13 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const sendKot = useCallback(async () => {
     if (sendingRef.current) return;
     if (draft.length === 0) return;
+
+    // Takeaway: collect payment FIRST, then settle + send KOT atomically.
+    if (session?.channel === "takeaway") {
+      setTakeawaySettleOpen(true);
+      return;
+    }
+
     sendingRef.current = true;
     setSending(true);
     const payload = draft.map((d) => ({ menu_item_id: d.menu_item_id, qty: d.qty, note: d.note ?? null }));
@@ -266,21 +273,76 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       waiterName,
     });
 
-    // Takeaway: print the bill at the counter simultaneously and flip the
-    // session to bill_requested so the cashier can settle it.
-    if (session?.channel === "takeaway") {
-      printProForma(`BILL · K-${String(kotNo).padStart(4, "0")}`, draft, { noteOverride: null });
-      supabase.rpc("request_bill", { _session_id: sessionId }).then(({ error }) => {
-        if (error) console.error("request_bill failed", error);
-      });
-    }
-
     setDraft([]);
     setKotNote("");
     setCartOpen(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, kotNote, sessionId, restaurant, session, load, waiterName]);
+
+  // Build BillLine[] from current draft for the takeaway settle dialog
+  const draftBillLines = useMemo<BillLine[]>(() => {
+    return draft.map((d) => {
+      const p = prices.get(d.menu_item_id);
+      return {
+        menu_item_id: d.menu_item_id,
+        name: d.name,
+        qty: d.qty,
+        inclusive_price: p?.inclusive ?? 0,
+        base_price: p?.base ?? 0,
+        gst_rate: p?.gst ?? 0,
+        line_total: d.qty * (p?.inclusive ?? 0),
+      };
+    });
+  }, [draft, prices]);
+
+  function onTakeawaySettled(r: TakeawaySettleResult) {
+    const kotTag = `K-${String(r.kot_no).padStart(4, "0")}`;
+    toast.success(`Invoice ${r.invoice_no} settled · KOT ${kotTag} sent`);
+
+    // 1) Print KOT for the kitchen
+    printKOT({
+      restaurantName: restaurant?.name,
+      kotNo: kotTag,
+      sentAt: new Date().toISOString(),
+      tableLabel: "Takeaway",
+      pax: session?.pax ?? 1,
+      lines: draft.map((d) => ({ name: d.name, qty: d.qty, note: d.note })),
+      note: kotNote || undefined,
+      waiterName,
+    });
+
+    // 2) Print PAID bill at the counter
+    if (restaurant && session) {
+      printBill({
+        restaurant,
+        invoice_no: r.invoice_no,
+        issued_at: new Date().toISOString(),
+        table_label: "Takeaway",
+        pax: session.pax,
+        lines: draftBillLines,
+        totals: {
+          base: r.base,
+          cgst: r.cgst,
+          sgst: r.sgst,
+          service_charge: r.service_charge,
+          discount: r.discount,
+          round_off: r.round_off,
+          total: r.total,
+        },
+        payments: [],
+        notes: r.change > 0 ? `Tendered ₹${r.tendered.toFixed(2)} · Change ₹${r.change.toFixed(2)}` : null,
+        waiterName,
+        paidMarker: true,
+      });
+    }
+
+    setTakeawaySettleOpen(false);
+    setDraft([]);
+    setKotNote("");
+    setCartOpen(false);
+    nav({ to: "/tables" });
+  }
 
   // Keyboard shortcut: Ctrl/Cmd+Enter to send KOT (works anywhere on the page)
   useEffect(() => {
