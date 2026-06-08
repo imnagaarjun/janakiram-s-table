@@ -438,6 +438,7 @@ function DraftBody({
   sentKots,
   sentLines,
   itemsById,
+  prices,
   onUpdate,
   onClear,
   onSend,
@@ -450,12 +451,20 @@ function DraftBody({
   sentKots: SentKot[];
   sentLines: SentLine[];
   itemsById: Map<string, MenuItem>;
+  prices: Map<string, number>;
   onUpdate: (key: string, qty: number) => void;
   onClear: () => void;
   onSend: () => void;
   sending: boolean;
   onVoid: (l: SentLine) => void;
 }) {
+  const fmt = (n: number) => `₹${n.toFixed(2)}`;
+  const priceOf = (mid: string) => prices.get(mid) ?? 0;
+  const draftTotal = draft.reduce((s, d) => s + d.qty * priceOf(d.menu_item_id), 0);
+  const sentTotal = sentLines
+    .filter((l) => l.status !== "void")
+    .reduce((s, l) => s + Number(l.qty) * priceOf(l.menu_item_id), 0);
+  const grandTotal = draftTotal + sentTotal;
   return (
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
