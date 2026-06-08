@@ -167,11 +167,26 @@ export function TablesGrid() {
     [nav],
   );
 
-  const openTakeaway = useCallback(() => {
-    setChannel("takeaway");
-    setPax("1");
-    setPicker({ kind: "takeaway" });
-  }, []);
+  const openTakeaway = useCallback(async () => {
+    if (!profile) return;
+    setStarting(true);
+    const { data, error } = await db
+      .from("order_sessions")
+      .insert({
+        restaurant_id: profile.restaurant_id,
+        table_code: null,
+        channel: "takeaway",
+        pax: 1,
+      })
+      .select("id")
+      .single();
+    setStarting(false);
+    if (error || !data) {
+      toast.error(error?.message ?? "Failed to open takeaway");
+      return;
+    }
+    nav({ to: "/order/$sessionId", params: { sessionId: (data as { id: string }).id } });
+  }, [profile, nav]);
 
   const startOrder = useCallback(async () => {
     if (!profile || !picker) return;

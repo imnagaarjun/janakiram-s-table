@@ -10,6 +10,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { MenuImage } from "@/components/menu/MenuImage";
 import { ItemQtyDialog } from "./ItemQtyDialog";
 import { VoidDialog } from "./VoidDialog";
+import { computeBill, type BillLine } from "@/lib/billing";
+import { printBill } from "@/lib/print-bill";
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import {
   availableFor,
@@ -58,7 +60,8 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [sentKots, setSentKots] = useState<SentKot[]>([]);
   const [sentLines, setSentLines] = useState<SentLine[]>([]);
-  const [prices, setPrices] = useState<Map<string, number>>(new Map());
+  const [prices, setPrices] = useState<Map<string, { inclusive: number; base: number; gst: number }>>(new Map());
+  const [restaurant, setRestaurant] = useState<{ name: string | null; address: string | null; gstin: string | null; fssai: string | null; phone: string | null; service_charge_pct: number } | null>(null);
   const [activeCat, setActiveCat] = useState<string>(FAV_KEY);
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [popup, setPopup] = useState<MenuItem | null>(null);
@@ -89,15 +92,20 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     const sk = new Set(((kRes.data ?? []) as SentKot[]).map((k) => k.id));
     setSentLines(((kiRes.data ?? []) as SentLine[]).filter((l) => sk.has(l.kot_id)));
     const channel = (sRes.data as SessionRow | null)?.channel ?? "dinein";
-    const { data: pData } = await db
-      .from("menu_prices")
-      .select("menu_item_id,inclusive_price")
-      .eq("channel_key", channel);
-    const pmap = new Map<string, number>();
-    (pData ?? []).forEach((p: { menu_item_id: string; inclusive_price: number | string }) =>
-      pmap.set(p.menu_item_id, Number(p.inclusive_price)),
+    const [pRes, restRes] = await Promise.all([
+      db.from("menu_prices").select("menu_item_id,inclusive_price,base_price,gst_rate").eq("channel_key", channel),
+      db.from("restaurants").select("name,address,gstin,fssai,phone,service_charge_pct").limit(1).maybeSingle(),
+    ]);
+    const pmap = new Map<string, { inclusive: number; base: number; gst: number }>();
+    (pRes.data ?? []).forEach((p: { menu_item_id: string; inclusive_price: number | string; base_price: number | string; gst_rate: number | string }) =>
+      pmap.set(p.menu_item_id, {
+        inclusive: Number(p.inclusive_price),
+        base: Number(p.base_price),
+        gst: Number(p.gst_rate),
+      }),
     );
     setPrices(pmap);
+    setRestaurant(rRes.data as typeof restaurant);
     setLoading(false);
   }, [sessionId]);
 
@@ -175,7 +183,53 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       load(); // reconcile
       return;
     }
-    toast.success(`KOT K-${String((data as { kot_no: number }).kot_no).padStart(4, "0")} sent`);
+    const kotNo = (data as { kot_no: number }).kot_no;
+    toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
+
+    // Build combined lines (active sent + just-sent draft) for pro-forma bill print
+    try {
+      const agg = new Map<string, number>();
+      sentLines.filter((l) => l.status !== "void").forEach((l) => {
+        agg.set(l.menu_item_id, (agg.get(l.menu_item_id) ?? 0) + Number(l.qty));
+      });
+      draft.forEach((d) => {
+        agg.set(d.menu_item_id, (agg.get(d.menu_item_id) ?? 0) + d.qty);
+      });
+      const billLines: BillLine[] = Array.from(agg.entries()).map(([mid, qty]) => {
+        const p = prices.get(mid);
+        return {
+          menu_item_id: mid,
+          name: itemsById.get(mid)?.name ?? "Item",
+          qty,
+          inclusive_price: p?.inclusive ?? 0,
+          base_price: p?.base ?? 0,
+          gst_rate: p?.gst ?? 0,
+          line_total: qty * (p?.inclusive ?? 0),
+        };
+      });
+      if (billLines.length > 0 && restaurant && session) {
+        const totals = computeBill(billLines, {
+          service_charge_pct: restaurant.service_charge_pct ?? 0,
+          discount_amt: 0,
+          discount_pct: 0,
+          complimentary: false,
+        });
+        printBill({
+          restaurant,
+          invoice_no: `PREVIEW · K-${String(kotNo).padStart(4, "0")}`,
+          issued_at: new Date().toISOString(),
+          table_label: session.table_code ? `Table ${session.table_code}` : "Takeaway",
+          pax: session.pax,
+          lines: billLines,
+          totals,
+          payments: [],
+          notes: "*** PRO-FORMA — NOT A TAX INVOICE ***",
+        });
+      }
+    } catch (e) {
+      console.error("Print preview failed", e);
+    }
+
     setDraft([]);
     setKotNote("");
     setCartOpen(false);
@@ -451,7 +505,7 @@ function DraftBody({
   sentKots: SentKot[];
   sentLines: SentLine[];
   itemsById: Map<string, MenuItem>;
-  prices: Map<string, number>;
+  prices: Map<string, { inclusive: number; base: number; gst: number }>;
   onUpdate: (key: string, qty: number) => void;
   onClear: () => void;
   onSend: () => void;
@@ -459,7 +513,7 @@ function DraftBody({
   onVoid: (l: SentLine) => void;
 }) {
   const fmt = (n: number) => `₹${n.toFixed(2)}`;
-  const priceOf = (mid: string) => prices.get(mid) ?? 0;
+  const priceOf = (mid: string) => prices.get(mid)?.inclusive ?? 0;
   const draftTotal = draft.reduce((s, d) => s + d.qty * priceOf(d.menu_item_id), 0);
   const sentTotal = sentLines
     .filter((l) => l.status !== "void")
