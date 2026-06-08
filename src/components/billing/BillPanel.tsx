@@ -333,6 +333,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       payments: payments
         .filter((p) => Number(p.amount) > 0)
         .map((p) => ({ mode: p.mode, amount: Number(p.amount), ref_no: p.ref_no || null })),
+      waiterName,
     });
   }
 
