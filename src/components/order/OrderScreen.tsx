@@ -88,6 +88,16 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     setSentKots((kRes.data ?? []) as SentKot[]);
     const sk = new Set(((kRes.data ?? []) as SentKot[]).map((k) => k.id));
     setSentLines(((kiRes.data ?? []) as SentLine[]).filter((l) => sk.has(l.kot_id)));
+    const channel = (sRes.data as SessionRow | null)?.channel ?? "dinein";
+    const { data: pData } = await db
+      .from("menu_prices")
+      .select("menu_item_id,inclusive_price")
+      .eq("channel_key", channel);
+    const pmap = new Map<string, number>();
+    (pData ?? []).forEach((p: { menu_item_id: string; inclusive_price: number | string }) =>
+      pmap.set(p.menu_item_id, Number(p.inclusive_price)),
+    );
+    setPrices(pmap);
     setLoading(false);
   }, [sessionId]);
 
