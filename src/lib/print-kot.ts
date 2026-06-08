@@ -1,5 +1,9 @@
 // Generates a KOT print HTML (no prices) and opens a print dialog.
-import { escapeHtml } from "@/lib/utils";
+function escapeHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string),
+  );
+}
 
 interface KotLine {
   name: string;
