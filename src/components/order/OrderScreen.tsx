@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Send, Trash2, ChevronLeft, ShoppingBag, Star } from "lucide-react";
 import { toast } from "sonner";
@@ -168,31 +168,15 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     setDraft((d) => d.map((x) => (x.key === key ? { ...x, qty } : x)));
   }
 
-  async function sendKot() {
-    if (draft.length === 0) return;
-    setSending(true);
-    const payload = draft.map((d) => ({ menu_item_id: d.menu_item_id, qty: d.qty, note: d.note ?? null }));
-    const { data, error } = await db.rpc("send_kot", {
-      _session_id: sessionId,
-      _items: payload,
-      _note: kotNote || null,
-    });
-    setSending(false);
-    if (error) {
-      toast.error(parseRpcError(error.message));
-      load(); // reconcile
-      return;
-    }
-    const kotNo = (data as { kot_no: number }).kot_no;
-    toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
+  const sendingRef = useRef(false);
 
-    // Build combined lines (active sent + just-sent draft) for pro-forma bill print
+  function printProForma(invoiceTag: string, extraDraft: DraftLine[] = []) {
     try {
       const agg = new Map<string, number>();
       sentLines.filter((l) => l.status !== "void").forEach((l) => {
         agg.set(l.menu_item_id, (agg.get(l.menu_item_id) ?? 0) + Number(l.qty));
       });
-      draft.forEach((d) => {
+      extraDraft.forEach((d) => {
         agg.set(d.menu_item_id, (agg.get(d.menu_item_id) ?? 0) + d.qty);
       });
       const billLines: BillLine[] = Array.from(agg.entries()).map(([mid, qty]) => {
@@ -207,34 +191,71 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
           line_total: qty * (p?.inclusive ?? 0),
         };
       });
-      if (billLines.length > 0 && restaurant && session) {
-        const totals = computeBill(billLines, {
-          service_charge_pct: restaurant.service_charge_pct ?? 0,
-          discount_amt: 0,
-          discount_pct: 0,
-          complimentary: false,
-        });
-        printBill({
-          restaurant,
-          invoice_no: `PREVIEW · K-${String(kotNo).padStart(4, "0")}`,
-          issued_at: new Date().toISOString(),
-          table_label: session.table_code ? `Table ${session.table_code}` : "Takeaway",
-          pax: session.pax,
-          lines: billLines,
-          totals,
-          payments: [],
-          notes: "*** PRO-FORMA — NOT A TAX INVOICE ***",
-        });
-      }
+      if (billLines.length === 0 || !restaurant || !session) return;
+      const totals = computeBill(billLines, {
+        service_charge_pct: restaurant.service_charge_pct ?? 0,
+        discount_amt: 0,
+        discount_pct: 0,
+        complimentary: false,
+      });
+      printBill({
+        restaurant,
+        invoice_no: invoiceTag,
+        issued_at: new Date().toISOString(),
+        table_label: session.table_code ? `Table ${session.table_code}` : "Takeaway",
+        pax: session.pax,
+        lines: billLines,
+        totals,
+        payments: [],
+        notes: "*** PRO-FORMA — NOT A TAX INVOICE ***",
+      });
     } catch (e) {
       console.error("Print preview failed", e);
     }
+  }
+
+  const sendKot = useCallback(async () => {
+    if (sendingRef.current) return;
+    if (draft.length === 0) return;
+    sendingRef.current = true;
+    setSending(true);
+    const payload = draft.map((d) => ({ menu_item_id: d.menu_item_id, qty: d.qty, note: d.note ?? null }));
+    const { data, error } = await db.rpc("send_kot", {
+      _session_id: sessionId,
+      _items: payload,
+      _note: kotNote || null,
+    });
+    setSending(false);
+    sendingRef.current = false;
+    if (error) {
+      toast.error(parseRpcError(error.message));
+      load();
+      return;
+    }
+    const kotNo = (data as { kot_no: number }).kot_no;
+    toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
+
+    printProForma(`PREVIEW · K-${String(kotNo).padStart(4, "0")}`, draft);
 
     setDraft([]);
     setKotNote("");
     setCartOpen(false);
     load();
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, kotNote, sessionId, sentLines, prices, restaurant, session, itemsById, load]);
+
+  // Keyboard shortcut: Ctrl/Cmd+Enter to send KOT (works anywhere on the page)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Enter") return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (draft.length === 0) return;
+      e.preventDefault();
+      sendKot();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [draft.length, sendKot]);
 
   async function confirmVoid(line: SentLine, reason: string, note: string, pin: string) {
     const { error } = await db.rpc("void_kot_item", {
@@ -294,11 +315,14 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
                 return;
               }
               const { error } = await supabase.rpc("request_bill", { _session_id: sessionId });
-              if (error) toast.error(error.message);
-              else {
-                toast.success("Bill requested — cashier notified");
-                setSession((s) => (s ? { ...s, status: "bill_requested" } : s));
+              if (error) {
+                toast.error(error.message);
+                return;
               }
+              toast.success("Bill requested — cashier notified");
+              setSession((s) => (s ? { ...s, status: "bill_requested" } : s));
+              // Generate pro-forma bill PDF (same flow as KOT send)
+              printProForma("PRO-FORMA · Bill Requested");
             }}
           >
             {session.status === "bill_requested" ? "Open Bill" : "Request Bill"}
@@ -391,7 +415,6 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               itemsById={itemsById}
               prices={prices}
               onUpdate={updateDraftQty}
-              onClear={() => setDraft([])}
               onSend={sendKot}
               sending={sending}
               onVoid={setVoidLine}
@@ -405,7 +428,9 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         <Sheet open={cartOpen} onOpenChange={setCartOpen}>
           <SheetTrigger asChild>
             <Button
-              className="fixed right-3 z-30 h-14 rounded-full shadow-lg flex items-center gap-1.5"
+              className={`fixed right-3 z-30 h-14 rounded-full shadow-lg flex items-center gap-1.5 ${
+                draftCount > 0 ? "kot-pulse" : ""
+              }`}
               style={{ bottom: "calc(env(safe-area-inset-bottom) + 76px)" }}
             >
               <ShoppingBag className="h-5 w-5" />
@@ -431,7 +456,6 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               itemsById={itemsById}
               prices={prices}
               onUpdate={updateDraftQty}
-              onClear={() => setDraft([])}
               onSend={sendKot}
               sending={sending}
               onVoid={setVoidLine}
@@ -495,7 +519,6 @@ function DraftBody({
   itemsById,
   prices,
   onUpdate,
-  onClear,
   onSend,
   sending,
   onVoid,
@@ -508,7 +531,6 @@ function DraftBody({
   itemsById: Map<string, MenuItem>;
   prices: Map<string, { inclusive: number; base: number; gst: number }>;
   onUpdate: (key: string, qty: number) => void;
-  onClear: () => void;
   onSend: () => void;
   sending: boolean;
   onVoid: (l: SentLine) => void;
@@ -648,12 +670,17 @@ function DraftBody({
         </div>
       </div>
 
-      <div className="border-t p-3 flex items-center gap-2 bg-surface">
-        <Button variant="outline" onClick={onClear} disabled={draft.length === 0}>
-          Clear
-        </Button>
-        <Button className="flex-1" onClick={onSend} disabled={draft.length === 0 || sending}>
-          <Send className="h-4 w-4" /> {sending ? "Sending…" : `Send KOT (${draft.reduce((s, d) => s + d.qty, 0)})`}
+      <div className="border-t p-3 bg-surface">
+        <Button
+          onClick={onSend}
+          disabled={draft.length === 0 || sending}
+          className={`w-full h-16 text-lg font-extrabold tracking-wide ${
+            draft.length > 0 && !sending ? "kot-pulse" : ""
+          }`}
+        >
+          <Send className="h-5 w-5" />
+          {sending ? "Sending…" : `Send KOT (${draft.reduce((s, d) => s + d.qty, 0)})`}
+          <span className="ml-2 hidden sm:inline rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider">⌘/Ctrl+↵</span>
         </Button>
       </div>
     </div>
