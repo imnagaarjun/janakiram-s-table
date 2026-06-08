@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Send, ChevronLeft, ShoppingBag, Star } from "lucide-react";
+import { Loader2, Send, Trash2, ChevronLeft, ShoppingBag, Star } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { supabase } from "@/integrations/supabase/client";
