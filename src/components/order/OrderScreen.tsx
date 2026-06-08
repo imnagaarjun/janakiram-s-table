@@ -375,6 +375,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               sentKots={sentKots}
               sentLines={sentLines}
               itemsById={itemsById}
+              prices={prices}
               onUpdate={updateDraftQty}
               onClear={() => setDraft([])}
               onSend={sendKot}
