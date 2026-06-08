@@ -22,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  compareCodes,
   STATUS_CLASSES,
   STATUS_LABEL,
   type DiningTable,
