@@ -560,6 +560,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               onSend={sendKot}
               sending={sending}
               onVoid={setVoidLine}
+              sendLabel={session.channel === "takeaway" ? "Settle & Send KOT" : "Send KOT"}
             />
           </SheetContent>
         </Sheet>
@@ -634,7 +635,21 @@ function DraftBody({
   onSend,
   sending,
   onVoid,
+  sendLabel = "Send KOT",
 }: {
+  draft: DraftLine[];
+  kotNote: string;
+  setKotNote: (s: string) => void;
+  sentKots: SentKot[];
+  sentLines: SentLine[];
+  itemsById: Map<string, MenuItem>;
+  prices: Map<string, { inclusive: number; base: number; gst: number }>;
+  onUpdate: (key: string, qty: number) => void;
+  onSend: () => void;
+  sending: boolean;
+  onVoid: (l: SentLine) => void;
+  sendLabel?: string;
+}) {
   draft: DraftLine[];
   kotNote: string;
   setKotNote: (s: string) => void;
