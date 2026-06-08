@@ -86,6 +86,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
     { key: crypto.randomUUID(), mode: "cash", amount: "", ref_no: "" },
   ]);
   const [notes, setNotes] = useState("");
+  const defaultAmountSet = useRef(false);
   const [settling, setSettling] = useState(false);
   const [confirmation, setConfirmation] = useState<{
     invoice_no: string;
