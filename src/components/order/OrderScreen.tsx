@@ -672,12 +672,17 @@ function DraftBody({
         </div>
       </div>
 
-      <div className="border-t p-3 flex items-center gap-2 bg-surface">
-        <Button variant="outline" onClick={onClear} disabled={draft.length === 0}>
-          Clear
-        </Button>
-        <Button className="flex-1" onClick={onSend} disabled={draft.length === 0 || sending}>
-          <Send className="h-4 w-4" /> {sending ? "Sending…" : `Send KOT (${draft.reduce((s, d) => s + d.qty, 0)})`}
+      <div className="border-t p-3 bg-surface">
+        <Button
+          onClick={onSend}
+          disabled={draft.length === 0 || sending}
+          className={`w-full h-16 text-lg font-extrabold tracking-wide ${
+            draft.length > 0 && !sending ? "kot-pulse" : ""
+          }`}
+        >
+          <Send className="h-5 w-5" />
+          {sending ? "Sending…" : `Send KOT (${draft.reduce((s, d) => s + d.qty, 0)})`}
+          <span className="ml-2 hidden sm:inline rounded bg-black/15 px-1.5 py-0.5 text-[10px] font-bold tracking-wider">⌘/Ctrl+↵</span>
         </Button>
       </div>
     </div>
