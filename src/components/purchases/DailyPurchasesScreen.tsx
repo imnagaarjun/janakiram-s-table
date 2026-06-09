@@ -108,6 +108,7 @@ export function DailyPurchasesScreen() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, DraftLine[]>>({});
+  const [vendorPayMode, setVendorPayMode] = useState<Record<string, PayMode>>({});
   const [savingVendor, setSavingVendor] = useState<string | null>(null);
   const [payDialog, setPayDialog] = useState<Vendor | null>(null);
 
@@ -146,8 +147,10 @@ export function DailyPurchasesScreen() {
 
     // Build drafts: one row per product for multi-product vendors, one row for single-line
     const d: Record<string, DraftLine[]> = {};
+    const vp: Record<string, PayMode> = {};
     for (const ven of v.data ?? []) {
       const vLines = (l.data ?? []).filter((x: PurchaseLine) => x.vendor_id === ven.id);
+      vp[ven.id] = (vLines[0]?.pay_mode as PayMode) ?? "cash";
       if (ven.is_multi_product) {
         const vProds = (p.data ?? []).filter((x: VendorProduct) => x.vendor_id === ven.id);
         d[ven.id] = vProds.map((pr: VendorProduct) => {
@@ -166,6 +169,18 @@ export function DailyPurchasesScreen() {
             description: "",
           };
         });
+      } else if (ven.is_fixed_amount) {
+        const ex = vLines[0];
+        d[ven.id] = [
+          {
+            vendor_product_id: null,
+            qty: "1",
+            unit_price: ex ? String(ex.amount) : "",
+            pay_mode: ex?.pay_mode ?? "cash",
+            paid_amount: ex ? String(ex.paid_amount) : "",
+            description: ex?.description ?? "",
+          },
+        ];
       } else {
         const ex = vLines[0];
         d[ven.id] = [
@@ -181,6 +196,7 @@ export function DailyPurchasesScreen() {
       }
     }
     setDrafts(d);
+    setVendorPayMode(vp);
     setLoading(false);
     loadDues(v.data ?? []);
   }, [businessDate, loadDues]);
