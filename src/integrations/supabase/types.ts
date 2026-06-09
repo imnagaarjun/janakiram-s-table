@@ -1511,6 +1511,7 @@ export type Database = {
       available_qty: { Args: { _menu_item_id: string }; Returns: number }
       bump_kot: { Args: { _kot_id: string }; Returns: Json }
       business_day_start: { Args: { _rid: string }; Returns: string }
+      cash_expense_total: { Args: { _business_date: string }; Returns: number }
       close_business_day: { Args: { _decisions: Json }; Returns: undefined }
       current_restaurant_id: { Args: never; Returns: string }
       has_role: {
@@ -1531,11 +1532,25 @@ export type Database = {
         }
         Returns: Json
       }
+      reopen_cash_reconciliation: {
+        Args: { _recon_id: string }
+        Returns: undefined
+      }
       reopen_invoice: {
         Args: { _invoice_id: string; _manager_pin: string; _reason: string }
         Returns: Json
       }
       request_bill: { Args: { _session_id: string }; Returns: Json }
+      save_cash_reconciliation: {
+        Args: {
+          _business_date: string
+          _counts: Json
+          _finalise: boolean
+          _section_key: string
+          _values: Json
+        }
+        Returns: string
+      }
       save_vendor_day_purchases: {
         Args: { _business_date: string; _lines: Json; _vendor_id: string }
         Returns: Json
