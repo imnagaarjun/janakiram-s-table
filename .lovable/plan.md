@@ -1,59 +1,71 @@
-## Goal
-Close the takeaway settlement gap by flipping the order of operations: **for takeaway, cashier collects payment first, then sends the KOT to kitchen**. No final invoice reprint — the pro-forma that prints on settlement is the customer copy.
+# Daily Cash Reconciliation (Operations)
 
-## New takeaway flow
-1. Cashier opens takeaway order, adds items to draft.
-2. Cashier taps **Settle & Send KOT** (replaces the current Send KOT button for takeaway only).
-3. Settlement dialog opens (cash / UPI / split, tendered, change). PIN required only if discount/service/comp is applied (existing rule).
-4. On successful settlement:
-   - Backend creates the invoice + payments (existing `settle_bill` RPC).
-   - Frontend immediately calls `send_kot` with the draft lines.
-   - KOT prints at kitchen printer.
-   - Bill (with invoice no., payment mode, change due, "PAID") prints at cash counter.
-5. Session closes; takeaway tile clears.
+You've built the **templates** (cashflow lines + denominations) under *Cash reconciliation setup*. What's missing is the **daily operations screen** that uses those templates to actually close cash each evening, per section (NON-AC / AC / Takeaway). That's what this step adds. Strictly additive — no existing module is touched.
 
-Dine-in flow is unchanged (Send KOT → … → Request Bill → Settle).
+## Where it lives
 
-## Technical changes
+- New route: `/cash-recon` (Admin, Manager, Cashier).
+- New entry in **More** tab → "Daily cash reconciliation" (under Daily purchases).
+- The existing *Cash reconciliation setup* (`/cash-config`) stays as a config-only screen for Admin/Manager.
 
-**Backend — one new RPC:** `settle_takeaway(_session_id, _draft_items, _kot_note, _settle_params, _payments)`
-- Wraps both operations in a single transaction:
-  1. Validates session is `open` and `channel = 'takeaway'`.
-  2. Calls existing `send_kot` logic inline (stock checks, KOT row, ledger, kot_no).
-  3. Calls existing `settle_bill` logic inline (invoice, payments, close session).
-- Returns `{ kot_no, invoice_no, total, tendered, change, … }` so the client can print both dockets.
-- Reuses existing validation (insufficient stock, empty cart, bad PIN) — same error codes.
-- Atomicity matters: if stock fails, payment must not be recorded; if payment validation fails, KOT must not be sent.
+## Screen layout
 
-**Frontend — `OrderScreen.tsx`:**
-- For `session.channel === "takeaway"`:
-  - Replace the **Send KOT** primary button with **Settle & Send KOT** (disabled when draft is empty).
-  - Remove the takeaway-specific block that currently auto-prints pro-forma + flags `request_bill` on Send KOT.
-  - On tap: open the existing `SettlementDialog` (currently only opens from BillPanel) seeded with the draft total.
-  - On confirm: call `settle_takeaway` RPC → on success, `printKOT(...)` then `printBill(...)` with `waiterName`, invoice no., payment mode, and "PAID" marker → toast → navigate back to Tables.
-- For dine-in: no change.
+Top bar:
+- Business-date picker (defaults to today's business day).
+- Section tabs: NON-AC · AC · Takeaway (driven by `cash_sections`).
+- Status badge: Draft / Finalised. Once finalised, inputs lock; Admin can reopen.
 
-**Frontend — `BillPanel.tsx`:** no behaviour change for takeaway (takeaway sessions will already be settled and won't route here). Keep dine-in path intact.
+Body — two stacked cards per section:
 
-**Frontend — `print-bill.ts`:** add optional `paidMarker?: boolean` to render a "PAID" stamp above the totals block when the bill is printed post-settlement (visual only; payments section already exists).
+**1. Cash-flow tally** (driven by `cashflow_lines` for that section)
+- Renders every active line in `display_order`.
+- Auto-source lines (Section Sales / GPay / Card / Swiggy / Cash Expense) are **read-only** and pulled live from `section_finance(business_date, section_key)` + purchase totals. Shown with a small "auto" chip.
+- Manual lines (Cash Opening, Owner's Drawings, Temple Donation, etc.) have an editable ₹ input with optional note.
+- Running **Expected Cash in Drawer** computed as Σ(add) − Σ(subtract), updated live.
 
-**Frontend — `SettlementDialog`:** extract the settle form currently inside `BillPanel` into a reusable dialog component (or lift its state) so OrderScreen can mount it without routing to the bill page. Keep the existing `SettlementDialog.tsx` (result view) as-is.
+**2. Denomination count** (driven by `denomination_config`)
+- Grid of rows: label · value · count · subtotal.
+- Free-text rows (value = null, e.g. "Coins", "Damage") accept a ₹ amount directly instead of a count.
+- **Counted Total** at the bottom.
 
-## Files touched
-- `supabase/migrations/*` — new `settle_takeaway` RPC + GRANT EXECUTE to authenticated.
-- `src/components/order/OrderScreen.tsx` — button swap, settlement dialog wiring, takeaway-specific submit handler.
-- `src/components/billing/BillPanel.tsx` — extract settle form into shared component; dine-in path unchanged.
-- `src/components/billing/SettleForm.tsx` *(new)* — the shared payment-entry form used by both BillPanel and OrderScreen.
-- `src/lib/print-bill.ts` — add `paidMarker` flag.
+Footer summary bar (sticky):
+- Expected · Counted · **Variance (Short / Excess / Tally ✓)** with color.
+- Buttons: *Save draft* · *Finalise* (Manager/Admin only; confirm dialog).
 
-## Out of scope
-- No reprint of a separate final tax invoice (per your decision — pro-forma post-settlement is the customer copy, and it already carries invoice no. + payment details).
-- Dine-in flow untouched.
-- No new UI for refunds/voids of takeaway after settlement (existing `reopen_invoice` already covers same-day reversals).
+## Data flow
 
-## Definition of done
-- Takeaway: cart → Settle & Send KOT → payment dialog → KOT prints in kitchen + bill prints at counter with invoice no. and PAID → session settled, tile cleared.
-- Dine-in: identical to today.
-- Stock failure rolls back payment; payment failure prevents KOT send.
-- Works on phone (waiter taking cash at counter) and tablet (cashier).
-- No regressions in BillPanel dine-in settlement.
+Per (business_date, section_key) there is one row in `cash_reconciliations`:
+- Save draft → upsert reconciliation (status='draft'), upsert `cash_recon_values` (one per manual line), upsert `denomination_counts` (one per active denomination).
+- Finalise → set status='finalised', stamp `finalised_by`/`finalised_at`, write to `audit_log`.
+- Reopen (Admin only) → status back to 'draft'.
+
+All writes go through one atomic RPC `save_cash_reconciliation(_date, _section, _values jsonb, _counts jsonb, _finalise bool)` to keep parent + children consistent and to ignore any client-supplied values for auto-source lines (server re-derives them on finalise from `section_finance`).
+
+Reads use existing `section_finance(_business_date, _section_key)` for auto rows and a new helper `cash_expense_total(_date, _section)` summing purchase_lines paid in cash for that section (or restaurant-wide for Cash Expense if section-tagging is absent — clarify below).
+
+## Wiring with existing reports
+
+The existing `CashReconArchive` report already reads `cash_reconciliations` / `denomination_counts`. Once this screen starts writing real data, the archive populates automatically. No report-side changes needed.
+
+## Iron rules respected
+
+- No edits to billing, invoices, payments, KOT, tables.
+- Auto-source values are server-derived; client values are ignored — same pattern as fixed vendor prices.
+- All new logic in new files; only `more.tsx` and `routeTree.gen.ts` get an additive entry.
+- RLS already on the four tables; nothing new to migrate except the two RPCs.
+
+## Files to add / touch
+
+- `src/components/cash-recon/DailyCashReconScreen.tsx` (new)
+- `src/routes/_authenticated/cash-recon.tsx` (new)
+- `src/routes/_authenticated/more.tsx` (append one link)
+- New migration: `save_cash_reconciliation` RPC + `cash_expense_total` helper.
+
+## One open question before I build
+
+**Cash Expense scope** — purchase_lines currently store `paid_cash` per vendor/day for the whole restaurant, not per section. For the auto "Cash Expense" line, should I:
+(a) attribute the full day's cash purchases to NON-AC only (kitchen lives there),
+(b) split equally across active sections, or
+(c) leave Cash Expense as a manual line and drop the auto source for now?
+
+Default if you don't answer: **(c)** — safest, fully reversible, and matches the existing pattern of "auto only when the source is unambiguous".

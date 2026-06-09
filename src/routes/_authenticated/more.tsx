@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Settings, LogOut, User, Boxes, Users, Truck, ShoppingCart, Wallet } from "lucide-react";
+import { Settings, LogOut, User, Boxes, Users, Truck, ShoppingCart, Wallet, Calculator } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -72,6 +72,15 @@ function Page() {
           >
             <Wallet className="h-5 w-5 text-muted-foreground" />
             <span className="flex-1 font-medium">Cash reconciliation setup</span>
+          </Link>
+        )}
+        {hasRole("admin", "manager", "cashier") && (
+          <Link
+            to="/cash-recon"
+            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
+          >
+            <Calculator className="h-5 w-5 text-muted-foreground" />
+            <span className="flex-1 font-medium">Daily cash reconciliation</span>
           </Link>
         )}
         {hasRole("admin") && (
