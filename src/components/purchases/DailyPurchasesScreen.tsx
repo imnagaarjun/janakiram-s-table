@@ -713,6 +713,7 @@ function SingleLineRow({
   draft,
   onChange,
 }: {
+  vendor: Vendor;
   draft: DraftLine;
   onChange: (patch: Partial<DraftLine>) => void;
 }) {
@@ -751,21 +752,6 @@ function SingleLineRow({
           onChange={(e) => onChange({ unit_price: e.target.value })}
           className="h-9 text-right"
         />
-      </div>
-      <div>
-        <Label className="text-xs">Pay</Label>
-        <Select
-          value={draft.pay_mode}
-          onValueChange={(v) => onChange({ pay_mode: v as PayMode })}
-        >
-          <SelectTrigger className="h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="cash">Cash</SelectItem>
-            <SelectItem value="online">Online</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
       <div>
         <Label className="text-xs">Paid</Label>
