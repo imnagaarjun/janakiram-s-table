@@ -239,13 +239,14 @@ export function DailyPurchasesScreen() {
   async function saveVendor(v: Vendor) {
     setSavingVendor(v.id);
     const rows = drafts[v.id] ?? [];
+    const mode = vendorPayMode[v.id] ?? "cash";
     const payload = rows
-      .filter((r) => num(r.qty) > 0)
+      .filter((r) => num(r.qty) > 0 && num(r.unit_price) > 0)
       .map((r) => ({
         vendor_product_id: r.vendor_product_id,
         qty: num(r.qty),
         unit_price: num(r.unit_price),
-        pay_mode: r.pay_mode,
+        pay_mode: mode,
         paid_amount: num(r.paid_amount),
         description: r.description || null,
       }));
@@ -274,8 +275,7 @@ export function DailyPurchasesScreen() {
   function draftSummary(v: Vendor) {
     let amount = 0;
     let paid = 0;
-    let cashTotal = 0;
-    let onlineTotal = 0;
+    const mode = vendorPayMode[v.id] ?? "cash";
     for (const r of drafts[v.id] ?? []) {
       const q = num(r.qty);
       if (q <= 0) continue;
@@ -283,9 +283,9 @@ export function DailyPurchasesScreen() {
       amount += a;
       const p = Math.min(num(r.paid_amount), a);
       paid += p;
-      if (r.pay_mode === "cash") cashTotal += p;
-      else onlineTotal += p;
     }
+    const cashTotal = mode === "cash" ? paid : 0;
+    const onlineTotal = mode === "online" ? paid : 0;
     return { amount, paid, due: amount - paid, cashTotal, onlineTotal };
   }
 
