@@ -1521,11 +1521,25 @@ export type Database = {
         Returns: boolean
       }
       pool_qty: { Args: { _pool_id: string }; Returns: number }
+      record_vendor_payment: {
+        Args: {
+          _amount: number
+          _business_date: string
+          _mode: Database["public"]["Enums"]["purchase_pay_mode"]
+          _note: string
+          _vendor_id: string
+        }
+        Returns: Json
+      }
       reopen_invoice: {
         Args: { _invoice_id: string; _manager_pin: string; _reason: string }
         Returns: Json
       }
       request_bill: { Args: { _session_id: string }; Returns: Json }
+      save_vendor_day_purchases: {
+        Args: { _business_date: string; _lines: Json; _vendor_id: string }
+        Returns: Json
+      }
       section_finance: {
         Args: { _business_date: string; _section_key: string }
         Returns: {
