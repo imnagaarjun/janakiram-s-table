@@ -223,12 +223,27 @@ export function DailyPurchasesScreen() {
     });
   }
 
+  function markDirty(vendorId: string) {
+    setDirty((s) => {
+      if (s.has(vendorId)) return s;
+      const n = new Set(s);
+      n.add(vendorId);
+      return n;
+    });
+  }
+
   function updateDraft(vendorId: string, idx: number, patch: Partial<DraftLine>) {
+    markDirty(vendorId);
     setDrafts((d) => {
       const arr = [...(d[vendorId] ?? [])];
       arr[idx] = { ...arr[idx], ...patch };
       return { ...d, [vendorId]: arr };
     });
+  }
+
+  function setPayMode(vendorId: string, mode: PayMode) {
+    markDirty(vendorId);
+    setVendorPayMode((m) => ({ ...m, [vendorId]: mode }));
   }
 
   async function saveVendor(v: Vendor) {
