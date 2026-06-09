@@ -12,6 +12,10 @@ import {
   presetRange, toCsv, downloadCsv, openPdfReport, fmtIST, istDayKey, istHour, safeFilename, inr,
   type RangeKey, type DateRange,
 } from "@/lib/reports";
+import {
+  DailyPurchaseReport, VendorDuesReport, CashReconArchive,
+  OwnersDrawingsReport, DailyPnLReport,
+} from "./ProcurementReports";
 
 // ---- Data shapes (loose) ----
 interface Invoice {
