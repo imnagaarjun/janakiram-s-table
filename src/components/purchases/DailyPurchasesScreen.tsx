@@ -581,7 +581,6 @@ function MultiProductGrid({
             <th className="text-right py-1.5 w-[90px]">Qty</th>
             <th className="text-right py-1.5 w-[110px]">Price</th>
             <th className="text-right py-1.5 w-[90px]">Amount</th>
-            <th className="text-center py-1.5 w-[120px]">Pay</th>
             <th className="text-right py-1.5 w-[100px] pr-1">Paid</th>
             <th className="text-right py-1.5 w-[90px] pr-1">Due</th>
           </tr>
@@ -634,20 +633,6 @@ function MultiProductGrid({
                 <td className="py-1.5 text-right tabular-nums font-medium">
                   {amt > 0 ? inr(amt) : "—"}
                 </td>
-                <td className="py-1.5 px-1">
-                  <Select
-                    value={r.pay_mode}
-                    onValueChange={(v) => onChange(idx, { pay_mode: v as PayMode })}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="online">Online</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
                 <td className="py-1.5">
                   <Input
                     type="number"
@@ -667,6 +652,59 @@ function MultiProductGrid({
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function FixedAmountRow({
+  vendor,
+  draft,
+  onChange,
+}: {
+  vendor: Vendor;
+  draft: DraftLine;
+  onChange: (patch: Partial<DraftLine>) => void;
+}) {
+  const amt = num(draft.unit_price);
+  const paid = Math.min(num(draft.paid_amount), amt);
+  const due = amt - paid;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
+      <div className="md:col-span-3">
+        <Label className="text-xs">{vendor.name}</Label>
+        <Input
+          value={draft.description}
+          onChange={(e) => onChange({ description: e.target.value })}
+          placeholder="Note (optional)"
+          className="h-9"
+        />
+      </div>
+      <div>
+        <Label className="text-xs">Amount</Label>
+        <Input
+          type="number"
+          inputMode="decimal"
+          value={draft.unit_price}
+          onChange={(e) =>
+            onChange({ unit_price: e.target.value, qty: "1" })
+          }
+          className="h-9 text-right"
+          placeholder="0"
+        />
+      </div>
+      <div>
+        <Label className="text-xs">Paid</Label>
+        <Input
+          type="number"
+          inputMode="decimal"
+          value={draft.paid_amount}
+          onChange={(e) => onChange({ paid_amount: e.target.value })}
+          className="h-9 text-right"
+        />
+      </div>
+      <div className="text-right text-xs text-muted-foreground">
+        Due: <strong className="text-amber-700">{inr(due)}</strong>
+      </div>
     </div>
   );
 }
