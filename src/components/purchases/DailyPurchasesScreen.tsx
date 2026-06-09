@@ -577,16 +577,15 @@ function MultiProductGrid({
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[640px]">
+    <div className="overflow-x-auto -mx-3 px-3">
+      <table className="w-full text-sm min-w-[420px]">
         <thead>
-          <tr className="text-xs uppercase tracking-wider text-muted-foreground">
-            <th className="text-left py-1.5 pl-1">Product</th>
-            <th className="text-right py-1.5 w-[90px]">Qty</th>
-            <th className="text-right py-1.5 w-[110px]">Price</th>
-            <th className="text-right py-1.5 w-[90px]">Amount</th>
-            <th className="text-right py-1.5 w-[100px] pr-1">Paid</th>
-            <th className="text-right py-1.5 w-[90px] pr-1">Due</th>
+          <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            <th className="text-left py-1 pl-1">Item</th>
+            <th className="text-right py-1 w-[64px]">Qty</th>
+            <th className="text-right py-1 w-[78px]">Price</th>
+            <th className="text-right py-1 w-[68px]">Amt</th>
+            <th className="text-right py-1 w-[78px] pr-1">Paid</th>
           </tr>
         </thead>
         <tbody>
@@ -596,26 +595,24 @@ function MultiProductGrid({
             const qty = num(r.qty);
             const price = p.price_mode === "fixed" ? Number(p.fixed_price ?? 0) : num(r.unit_price);
             const amt = qty * price;
-            const paid = Math.min(num(r.paid_amount), amt);
-            const due = amt - paid;
             return (
               <tr key={p.id} className="border-t border-border">
-                <td className="py-1.5 pl-1">
-                  <div className="font-medium">{p.name}</div>
-                  <div className="text-[10px] text-muted-foreground">per {p.unit}</div>
+                <td className="py-1 pl-1 pr-1">
+                  <div className="font-medium text-xs leading-tight truncate">{p.name}</div>
+                  <div className="text-[9px] text-muted-foreground leading-tight">/{p.unit}</div>
                 </td>
-                <td className="py-1.5">
+                <td className="py-1 pr-1">
                   <Input
                     type="number"
                     inputMode="decimal"
                     step="0.01"
                     value={r.qty}
                     onChange={(e) => onChange(idx, { qty: e.target.value })}
-                    className="text-right h-9"
+                    className="text-right h-8 px-1.5 text-sm"
                     placeholder="0"
                   />
                 </td>
-                <td className="py-1.5">
+                <td className="py-1 pr-1">
                   <div className="relative">
                     <Input
                       type="number"
@@ -625,31 +622,28 @@ function MultiProductGrid({
                       onChange={(e) => onChange(idx, { unit_price: e.target.value })}
                       readOnly={p.price_mode === "fixed"}
                       className={cn(
-                        "text-right h-9",
-                        p.price_mode === "fixed" && "bg-muted pr-7 text-muted-foreground",
+                        "text-right h-8 px-1.5 text-sm",
+                        p.price_mode === "fixed" && "bg-muted pr-5 text-muted-foreground",
                       )}
                     />
                     {p.price_mode === "fixed" && (
-                      <Lock className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                      <Lock className="absolute right-1 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                     )}
                   </div>
                 </td>
-                <td className="py-1.5 text-right tabular-nums font-medium">
+                <td className="py-1 pr-1 text-right tabular-nums font-medium text-xs">
                   {amt > 0 ? inr(amt) : "—"}
                 </td>
-                <td className="py-1.5">
+                <td className="py-1 pr-1">
                   <Input
                     type="number"
                     inputMode="decimal"
                     step="0.01"
                     value={r.paid_amount}
                     onChange={(e) => onChange(idx, { paid_amount: e.target.value })}
-                    className="text-right h-9"
+                    className="text-right h-8 px-1.5 text-sm"
                     placeholder="0"
                   />
-                </td>
-                <td className="py-1.5 pr-1 text-right tabular-nums text-amber-700">
-                  {due > 0 ? inr(due) : "—"}
                 </td>
               </tr>
             );
@@ -669,12 +663,9 @@ function FixedAmountRow({
   draft: DraftLine;
   onChange: (patch: Partial<DraftLine>) => void;
 }) {
-  const amt = num(draft.unit_price);
-  const paid = Math.min(num(draft.paid_amount), amt);
-  const due = amt - paid;
   return (
-    <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
-      <div className="md:col-span-3">
+    <div className="flex items-end gap-2">
+      <div className="flex-1 min-w-0">
         <Label className="text-xs">{vendor.name}</Label>
         <Input
           value={draft.description}
@@ -683,31 +674,22 @@ function FixedAmountRow({
           className="h-9"
         />
       </div>
-      <div>
-        <Label className="text-xs">Amount</Label>
-        <Input
-          type="number"
-          inputMode="decimal"
-          value={draft.unit_price}
-          onChange={(e) =>
-            onChange({ unit_price: e.target.value, qty: "1" })
-          }
-          className="h-9 text-right"
-          placeholder="0"
-        />
-      </div>
-      <div>
+      <div className="w-[110px]">
         <Label className="text-xs">Paid</Label>
         <Input
           type="number"
           inputMode="decimal"
           value={draft.paid_amount}
-          onChange={(e) => onChange({ paid_amount: e.target.value })}
+          onChange={(e) =>
+            onChange({
+              paid_amount: e.target.value,
+              unit_price: e.target.value,
+              qty: "1",
+            })
+          }
           className="h-9 text-right"
+          placeholder="0"
         />
-      </div>
-      <div className="text-right text-xs text-muted-foreground">
-        Due: <strong className="text-amber-700">{inr(due)}</strong>
       </div>
     </div>
   );
@@ -727,47 +709,53 @@ function SingleLineRow({
   const paid = Math.min(num(draft.paid_amount), amt);
   const due = amt - paid;
   return (
-    <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
-      <div className="md:col-span-2">
-        <Label className="text-xs">Description</Label>
-        <Input
-          value={draft.description}
-          onChange={(e) => onChange({ description: e.target.value })}
-          placeholder="e.g. 1 cylinder"
-          className="h-9"
-        />
+    <div className="space-y-2">
+      <div className="flex items-end gap-2">
+        <div className="flex-1 min-w-0">
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Description
+          </Label>
+          <Input
+            value={draft.description}
+            onChange={(e) => onChange({ description: e.target.value })}
+            placeholder="e.g. 1 cylinder"
+            className="h-9"
+          />
+        </div>
+        <div className="w-[64px]">
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Qty</Label>
+          <Input
+            type="number"
+            inputMode="decimal"
+            value={draft.qty}
+            onChange={(e) => onChange({ qty: e.target.value })}
+            className="h-9 text-right px-1.5"
+          />
+        </div>
+        <div className="w-[78px]">
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Price
+          </Label>
+          <Input
+            type="number"
+            inputMode="decimal"
+            value={draft.unit_price}
+            onChange={(e) => onChange({ unit_price: e.target.value })}
+            className="h-9 text-right px-1.5"
+          />
+        </div>
+        <div className="w-[78px]">
+          <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">Paid</Label>
+          <Input
+            type="number"
+            inputMode="decimal"
+            value={draft.paid_amount}
+            onChange={(e) => onChange({ paid_amount: e.target.value })}
+            className="h-9 text-right px-1.5"
+          />
+        </div>
       </div>
-      <div>
-        <Label className="text-xs">Qty</Label>
-        <Input
-          type="number"
-          inputMode="decimal"
-          value={draft.qty}
-          onChange={(e) => onChange({ qty: e.target.value })}
-          className="h-9 text-right"
-        />
-      </div>
-      <div>
-        <Label className="text-xs">Price</Label>
-        <Input
-          type="number"
-          inputMode="decimal"
-          value={draft.unit_price}
-          onChange={(e) => onChange({ unit_price: e.target.value })}
-          className="h-9 text-right"
-        />
-      </div>
-      <div>
-        <Label className="text-xs">Paid</Label>
-        <Input
-          type="number"
-          inputMode="decimal"
-          value={draft.paid_amount}
-          onChange={(e) => onChange({ paid_amount: e.target.value })}
-          className="h-9 text-right"
-        />
-      </div>
-      <div className="md:col-span-6 flex flex-wrap gap-4 text-xs text-muted-foreground pt-1">
+      <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
         <span>
           Amount: <strong className="text-foreground">{inr(amt)}</strong>
         </span>
