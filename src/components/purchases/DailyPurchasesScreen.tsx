@@ -103,6 +103,7 @@ export function DailyPurchasesScreen() {
   const [drafts, setDrafts] = useState<Record<string, DraftLine[]>>({});
   const [vendorPayMode, setVendorPayMode] = useState<Record<string, PayMode>>({});
   const [savingVendor, setSavingVendor] = useState<string | null>(null);
+  const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [payDialog, setPayDialog] = useState<Vendor | null>(null);
 
   const loadDues = useCallback(async (vList: Vendor[]) => {
