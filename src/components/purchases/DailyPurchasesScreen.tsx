@@ -26,13 +26,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { inr } from "@/lib/gst";
 import { cn } from "@/lib/utils";
@@ -44,6 +37,7 @@ interface Vendor {
   name: string;
   name_tamil: string | null;
   is_multi_product: boolean;
+  is_fixed_amount: boolean;
   default_category_id: string | null;
   is_active: boolean;
   display_order: number;
@@ -107,6 +101,7 @@ export function DailyPurchasesScreen() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, DraftLine[]>>({});
+  const [vendorPayMode, setVendorPayMode] = useState<Record<string, PayMode>>({});
   const [savingVendor, setSavingVendor] = useState<string | null>(null);
   const [payDialog, setPayDialog] = useState<Vendor | null>(null);
 
@@ -145,8 +140,10 @@ export function DailyPurchasesScreen() {
 
     // Build drafts: one row per product for multi-product vendors, one row for single-line
     const d: Record<string, DraftLine[]> = {};
+    const vp: Record<string, PayMode> = {};
     for (const ven of v.data ?? []) {
       const vLines = (l.data ?? []).filter((x: PurchaseLine) => x.vendor_id === ven.id);
+      vp[ven.id] = (vLines[0]?.pay_mode as PayMode) ?? "cash";
       if (ven.is_multi_product) {
         const vProds = (p.data ?? []).filter((x: VendorProduct) => x.vendor_id === ven.id);
         d[ven.id] = vProds.map((pr: VendorProduct) => {
@@ -165,6 +162,18 @@ export function DailyPurchasesScreen() {
             description: "",
           };
         });
+      } else if (ven.is_fixed_amount) {
+        const ex = vLines[0];
+        d[ven.id] = [
+          {
+            vendor_product_id: null,
+            qty: "1",
+            unit_price: ex ? String(ex.amount) : "",
+            pay_mode: ex?.pay_mode ?? "cash",
+            paid_amount: ex ? String(ex.paid_amount) : "",
+            description: ex?.description ?? "",
+          },
+        ];
       } else {
         const ex = vLines[0];
         d[ven.id] = [
@@ -180,6 +189,7 @@ export function DailyPurchasesScreen() {
       }
     }
     setDrafts(d);
+    setVendorPayMode(vp);
     setLoading(false);
     loadDues(v.data ?? []);
   }, [businessDate, loadDues]);
@@ -222,13 +232,14 @@ export function DailyPurchasesScreen() {
   async function saveVendor(v: Vendor) {
     setSavingVendor(v.id);
     const rows = drafts[v.id] ?? [];
+    const mode = vendorPayMode[v.id] ?? "cash";
     const payload = rows
-      .filter((r) => num(r.qty) > 0)
+      .filter((r) => num(r.qty) > 0 && num(r.unit_price) > 0)
       .map((r) => ({
         vendor_product_id: r.vendor_product_id,
         qty: num(r.qty),
         unit_price: num(r.unit_price),
-        pay_mode: r.pay_mode,
+        pay_mode: mode,
         paid_amount: num(r.paid_amount),
         description: r.description || null,
       }));
@@ -257,8 +268,7 @@ export function DailyPurchasesScreen() {
   function draftSummary(v: Vendor) {
     let amount = 0;
     let paid = 0;
-    let cashTotal = 0;
-    let onlineTotal = 0;
+    const mode = vendorPayMode[v.id] ?? "cash";
     for (const r of drafts[v.id] ?? []) {
       const q = num(r.qty);
       if (q <= 0) continue;
@@ -266,9 +276,9 @@ export function DailyPurchasesScreen() {
       amount += a;
       const p = Math.min(num(r.paid_amount), a);
       paid += p;
-      if (r.pay_mode === "cash") cashTotal += p;
-      else onlineTotal += p;
     }
+    const cashTotal = mode === "cash" ? paid : 0;
+    const onlineTotal = mode === "online" ? paid : 0;
     return { amount, paid, due: amount - paid, cashTotal, onlineTotal };
   }
 
@@ -386,6 +396,46 @@ export function DailyPurchasesScreen() {
 
                     {open && (
                       <div className="border-t border-border bg-muted/30 p-3 space-y-3">
+                        {/* Shared pay-mode at the top of the vendor */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Pay mode
+                          </span>
+                          <div className="inline-flex rounded-lg border border-border overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVendorPayMode((m) => ({ ...m, [v.id]: "cash" }))
+                              }
+                              className={cn(
+                                "px-3 py-1.5 text-xs font-medium flex items-center gap-1",
+                                (vendorPayMode[v.id] ?? "cash") === "cash"
+                                  ? "bg-emerald-600 text-white"
+                                  : "bg-surface hover:bg-accent",
+                              )}
+                            >
+                              <Wallet className="h-3.5 w-3.5" /> Cash
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVendorPayMode((m) => ({ ...m, [v.id]: "online" }))
+                              }
+                              className={cn(
+                                "px-3 py-1.5 text-xs font-medium flex items-center gap-1 border-l border-border",
+                                (vendorPayMode[v.id] ?? "cash") === "online"
+                                  ? "bg-sky-600 text-white"
+                                  : "bg-surface hover:bg-accent",
+                              )}
+                            >
+                              <Smartphone className="h-3.5 w-3.5" /> Online
+                            </button>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground">
+                            Applies to all lines for this vendor today
+                          </span>
+                        </div>
+
                         {v.is_multi_product ? (
                           <MultiProductGrid
                             vendor={v}
@@ -393,9 +443,18 @@ export function DailyPurchasesScreen() {
                             draft={drafts[v.id] ?? []}
                             onChange={(i, p) => updateDraft(v.id, i, p)}
                           />
+                        ) : v.is_fixed_amount ? (
+                          single && (
+                            <FixedAmountRow
+                              vendor={v}
+                              draft={single}
+                              onChange={(p) => updateDraft(v.id, 0, p)}
+                            />
+                          )
                         ) : (
                           single && (
                             <SingleLineRow
+                              vendor={v}
                               draft={single}
                               onChange={(p) => updateDraft(v.id, 0, p)}
                             />
@@ -515,7 +574,6 @@ function MultiProductGrid({
             <th className="text-right py-1.5 w-[90px]">Qty</th>
             <th className="text-right py-1.5 w-[110px]">Price</th>
             <th className="text-right py-1.5 w-[90px]">Amount</th>
-            <th className="text-center py-1.5 w-[120px]">Pay</th>
             <th className="text-right py-1.5 w-[100px] pr-1">Paid</th>
             <th className="text-right py-1.5 w-[90px] pr-1">Due</th>
           </tr>
@@ -568,20 +626,6 @@ function MultiProductGrid({
                 <td className="py-1.5 text-right tabular-nums font-medium">
                   {amt > 0 ? inr(amt) : "—"}
                 </td>
-                <td className="py-1.5 px-1">
-                  <Select
-                    value={r.pay_mode}
-                    onValueChange={(v) => onChange(idx, { pay_mode: v as PayMode })}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="online">Online</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
                 <td className="py-1.5">
                   <Input
                     type="number"
@@ -605,10 +649,64 @@ function MultiProductGrid({
   );
 }
 
+function FixedAmountRow({
+  vendor,
+  draft,
+  onChange,
+}: {
+  vendor: Vendor;
+  draft: DraftLine;
+  onChange: (patch: Partial<DraftLine>) => void;
+}) {
+  const amt = num(draft.unit_price);
+  const paid = Math.min(num(draft.paid_amount), amt);
+  const due = amt - paid;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
+      <div className="md:col-span-3">
+        <Label className="text-xs">{vendor.name}</Label>
+        <Input
+          value={draft.description}
+          onChange={(e) => onChange({ description: e.target.value })}
+          placeholder="Note (optional)"
+          className="h-9"
+        />
+      </div>
+      <div>
+        <Label className="text-xs">Amount</Label>
+        <Input
+          type="number"
+          inputMode="decimal"
+          value={draft.unit_price}
+          onChange={(e) =>
+            onChange({ unit_price: e.target.value, qty: "1" })
+          }
+          className="h-9 text-right"
+          placeholder="0"
+        />
+      </div>
+      <div>
+        <Label className="text-xs">Paid</Label>
+        <Input
+          type="number"
+          inputMode="decimal"
+          value={draft.paid_amount}
+          onChange={(e) => onChange({ paid_amount: e.target.value })}
+          className="h-9 text-right"
+        />
+      </div>
+      <div className="text-right text-xs text-muted-foreground">
+        Due: <strong className="text-amber-700">{inr(due)}</strong>
+      </div>
+    </div>
+  );
+}
+
 function SingleLineRow({
   draft,
   onChange,
 }: {
+  vendor: Vendor;
   draft: DraftLine;
   onChange: (patch: Partial<DraftLine>) => void;
 }) {
@@ -647,21 +745,6 @@ function SingleLineRow({
           onChange={(e) => onChange({ unit_price: e.target.value })}
           className="h-9 text-right"
         />
-      </div>
-      <div>
-        <Label className="text-xs">Pay</Label>
-        <Select
-          value={draft.pay_mode}
-          onValueChange={(v) => onChange({ pay_mode: v as PayMode })}
-        >
-          <SelectTrigger className="h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="cash">Cash</SelectItem>
-            <SelectItem value="online">Online</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
       <div>
         <Label className="text-xs">Paid</Label>

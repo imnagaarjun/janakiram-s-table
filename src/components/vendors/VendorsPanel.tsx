@@ -58,6 +58,7 @@ interface Vendor {
   name: string;
   name_tamil: string | null;
   is_multi_product: boolean;
+  is_fixed_amount: boolean;
   default_category_id: string | null;
   phone: string | null;
   is_active: boolean;
@@ -326,6 +327,7 @@ function VendorEditor({
   const [phone, setPhone] = useState(existing?.phone ?? "");
   const [categoryId, setCategoryId] = useState<string | null>(existing?.default_category_id ?? null);
   const [isMulti, setIsMulti] = useState(existing?.is_multi_product ?? false);
+  const [isFixedAmount, setIsFixedAmount] = useState(existing?.is_fixed_amount ?? false);
   const [isActive, setIsActive] = useState(existing?.is_active ?? true);
   const [saving, setSaving] = useState(false);
 
@@ -342,6 +344,7 @@ function VendorEditor({
       phone: phone.trim() || null,
       default_category_id: categoryId,
       is_multi_product: isMulti,
+      is_fixed_amount: isMulti ? false : isFixedAmount,
       is_active: isActive,
     };
     if (existing) {
@@ -416,8 +419,27 @@ function VendorEditor({
                 Liver). Off = single-line vendor with default category.
               </div>
             </div>
-            <Switch checked={isMulti} onCheckedChange={setIsMulti} />
+            <Switch
+              checked={isMulti}
+              onCheckedChange={(c) => {
+                setIsMulti(c);
+                if (c) setIsFixedAmount(false);
+              }}
+            />
           </div>
+
+          {!isMulti && (
+            <div className="rounded-xl border border-border p-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-medium text-sm">Fixed amount (no qty / price)</div>
+                <div className="text-xs text-muted-foreground">
+                  For flat-fee vendors (donations, rent, subscriptions). Daily entry shows a single
+                  amount field instead of Qty × Price.
+                </div>
+              </div>
+              <Switch checked={isFixedAmount} onCheckedChange={setIsFixedAmount} />
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <Switch checked={isActive} onCheckedChange={setIsActive} id="vend-active" />
