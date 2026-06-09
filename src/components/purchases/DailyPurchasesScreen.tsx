@@ -191,6 +191,7 @@ export function DailyPurchasesScreen() {
     }
     setDrafts(d);
     setVendorPayMode(vp);
+    setDirty(new Set());
     setLoading(false);
     loadDues(v.data ?? []);
   }, [businessDate, loadDues]);
