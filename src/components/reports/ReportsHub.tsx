@@ -12,6 +12,10 @@ import {
   presetRange, toCsv, downloadCsv, openPdfReport, fmtIST, istDayKey, istHour, safeFilename, inr,
   type RangeKey, type DateRange,
 } from "@/lib/reports";
+import {
+  DailyPurchaseReport, VendorDuesReport, CashReconArchive,
+  OwnersDrawingsReport, DailyPnLReport,
+} from "./ProcurementReports";
 
 // ---- Data shapes (loose) ----
 interface Invoice {
@@ -167,6 +171,11 @@ export function ReportsHub() {
     { value: "waiters", label: "Waiter Sales", render: () => <WaiterSales {...{ data, range, sessionMap, waiterForSession }} /> },
     { value: "alloc", label: "Allocations", render: () => <AllocationLog {...{ data, range, waiterMap }} /> },
     { value: "z", label: "Z-Report", render: () => <ZReport {...{ data, range }} /> },
+    { value: "purch", label: "Purchases", render: () => <DailyPurchaseReport range={range} /> },
+    { value: "dues", label: "Vendor Dues", render: () => <VendorDuesReport range={range} /> },
+    { value: "recon", label: "Cash Recon", render: () => <CashReconArchive range={range} /> },
+    { value: "drawings", label: "Owner Drawings", render: () => <OwnersDrawingsReport range={range} /> },
+    { value: "pnl", label: "Daily P&L", render: () => <DailyPnLReport range={range} /> },
   ];
 
   let tabs: TabDef[];
