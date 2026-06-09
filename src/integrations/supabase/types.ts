@@ -1368,6 +1368,7 @@ export type Database = {
           display_order: number
           id: string
           is_active: boolean
+          is_fixed_amount: boolean
           is_multi_product: boolean
           name: string
           name_tamil: string | null
@@ -1381,6 +1382,7 @@ export type Database = {
           display_order?: number
           id?: string
           is_active?: boolean
+          is_fixed_amount?: boolean
           is_multi_product?: boolean
           name: string
           name_tamil?: string | null
@@ -1394,6 +1396,7 @@ export type Database = {
           display_order?: number
           id?: string
           is_active?: boolean
+          is_fixed_amount?: boolean
           is_multi_product?: boolean
           name?: string
           name_tamil?: string | null
