@@ -403,6 +403,46 @@ export function DailyPurchasesScreen() {
 
                     {open && (
                       <div className="border-t border-border bg-muted/30 p-3 space-y-3">
+                        {/* Shared pay-mode at the top of the vendor */}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Pay mode
+                          </span>
+                          <div className="inline-flex rounded-lg border border-border overflow-hidden">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVendorPayMode((m) => ({ ...m, [v.id]: "cash" }))
+                              }
+                              className={cn(
+                                "px-3 py-1.5 text-xs font-medium flex items-center gap-1",
+                                (vendorPayMode[v.id] ?? "cash") === "cash"
+                                  ? "bg-emerald-600 text-white"
+                                  : "bg-surface hover:bg-accent",
+                              )}
+                            >
+                              <Wallet className="h-3.5 w-3.5" /> Cash
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setVendorPayMode((m) => ({ ...m, [v.id]: "online" }))
+                              }
+                              className={cn(
+                                "px-3 py-1.5 text-xs font-medium flex items-center gap-1 border-l border-border",
+                                (vendorPayMode[v.id] ?? "cash") === "online"
+                                  ? "bg-sky-600 text-white"
+                                  : "bg-surface hover:bg-accent",
+                              )}
+                            >
+                              <Smartphone className="h-3.5 w-3.5" /> Online
+                            </button>
+                          </div>
+                          <span className="text-[11px] text-muted-foreground">
+                            Applies to all lines for this vendor today
+                          </span>
+                        </div>
+
                         {v.is_multi_product ? (
                           <MultiProductGrid
                             vendor={v}
@@ -410,9 +450,18 @@ export function DailyPurchasesScreen() {
                             draft={drafts[v.id] ?? []}
                             onChange={(i, p) => updateDraft(v.id, i, p)}
                           />
+                        ) : v.is_fixed_amount ? (
+                          single && (
+                            <FixedAmountRow
+                              vendor={v}
+                              draft={single}
+                              onChange={(p) => updateDraft(v.id, 0, p)}
+                            />
+                          )
                         ) : (
                           single && (
                             <SingleLineRow
+                              vendor={v}
                               draft={single}
                               onChange={(p) => updateDraft(v.id, 0, p)}
                             />
