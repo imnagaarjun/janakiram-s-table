@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Settings, LogOut, User, Boxes, Users, Truck, ShoppingCart, Wallet } from "lucide-react";
+import { Settings, LogOut, User, Boxes, Users, Truck, ShoppingCart, Wallet, Calculator } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "@tanstack/react-router";
 
