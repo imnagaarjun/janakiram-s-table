@@ -58,6 +58,162 @@ export type Database = {
           },
         ]
       }
+      cash_recon_values: {
+        Row: {
+          cashflow_line_id: string
+          created_at: string
+          id: string
+          manual_value: number
+          note: string | null
+          reconciliation_id: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          cashflow_line_id: string
+          created_at?: string
+          id?: string
+          manual_value?: number
+          note?: string | null
+          reconciliation_id: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          cashflow_line_id?: string
+          created_at?: string
+          id?: string
+          manual_value?: number
+          note?: string | null
+          reconciliation_id?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_recon_values_cashflow_line_id_fkey"
+            columns: ["cashflow_line_id"]
+            isOneToOne: false
+            referencedRelation: "cashflow_lines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cash_recon_values_reconciliation_id_fkey"
+            columns: ["reconciliation_id"]
+            isOneToOne: false
+            referencedRelation: "cash_reconciliations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_reconciliations: {
+        Row: {
+          business_date: string
+          created_at: string
+          created_by: string | null
+          finalised_at: string | null
+          finalised_by: string | null
+          id: string
+          restaurant_id: string
+          section_key: string
+          status: Database["public"]["Enums"]["recon_status"]
+          updated_at: string
+        }
+        Insert: {
+          business_date: string
+          created_at?: string
+          created_by?: string | null
+          finalised_at?: string | null
+          finalised_by?: string | null
+          id?: string
+          restaurant_id: string
+          section_key: string
+          status?: Database["public"]["Enums"]["recon_status"]
+          updated_at?: string
+        }
+        Update: {
+          business_date?: string
+          created_at?: string
+          created_by?: string | null
+          finalised_at?: string | null
+          finalised_by?: string | null
+          id?: string
+          restaurant_id?: string
+          section_key?: string
+          status?: Database["public"]["Enums"]["recon_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cash_sections: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          key: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          key: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          key?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cashflow_lines: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          label: string
+          restaurant_id: string
+          section_key: string | null
+          sign: Database["public"]["Enums"]["cashflow_sign"]
+          source: Database["public"]["Enums"]["cashflow_source"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          label: string
+          restaurant_id: string
+          section_key?: string | null
+          sign: Database["public"]["Enums"]["cashflow_sign"]
+          source?: Database["public"]["Enums"]["cashflow_source"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          label?: string
+          restaurant_id?: string
+          section_key?: string | null
+          sign?: Database["public"]["Enums"]["cashflow_sign"]
+          source?: Database["public"]["Enums"]["cashflow_source"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           created_at: string
@@ -98,6 +254,114 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      denomination_config: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          label: string
+          restaurant_id: string
+          updated_at: string
+          value: number | null
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          label: string
+          restaurant_id: string
+          updated_at?: string
+          value?: number | null
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          label?: string
+          restaurant_id?: string
+          updated_at?: string
+          value?: number | null
+        }
+        Relationships: []
+      }
+      denomination_counts: {
+        Row: {
+          count: number
+          created_at: string
+          denomination_id: string
+          id: string
+          reconciliation_id: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          count?: number
+          created_at?: string
+          denomination_id: string
+          id?: string
+          reconciliation_id: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          count?: number
+          created_at?: string
+          denomination_id?: string
+          id?: string
+          reconciliation_id?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "denomination_counts_denomination_id_fkey"
+            columns: ["denomination_id"]
+            isOneToOne: false
+            referencedRelation: "denomination_config"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "denomination_counts_reconciliation_id_fkey"
+            columns: ["reconciliation_id"]
+            isOneToOne: false
+            referencedRelation: "cash_reconciliations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expense_categories: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       invoices: {
         Row: {
@@ -595,6 +859,88 @@ export type Database = {
           },
         ]
       }
+      purchase_lines: {
+        Row: {
+          amount: number
+          business_date: string
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_amount: number
+          id: string
+          note: string | null
+          paid_amount: number
+          pay_mode: Database["public"]["Enums"]["purchase_pay_mode"]
+          qty: number
+          restaurant_id: string
+          unit_price: number
+          updated_at: string
+          vendor_id: string
+          vendor_product_id: string | null
+        }
+        Insert: {
+          amount?: number
+          business_date: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_amount?: number
+          id?: string
+          note?: string | null
+          paid_amount?: number
+          pay_mode?: Database["public"]["Enums"]["purchase_pay_mode"]
+          qty?: number
+          restaurant_id: string
+          unit_price?: number
+          updated_at?: string
+          vendor_id: string
+          vendor_product_id?: string | null
+        }
+        Update: {
+          amount?: number
+          business_date?: string
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_amount?: number
+          id?: string
+          note?: string | null
+          paid_amount?: number
+          pay_mode?: Database["public"]["Enums"]["purchase_pay_mode"]
+          qty?: number
+          restaurant_id?: string
+          unit_price?: number
+          updated_at?: string
+          vendor_id?: string
+          vendor_product_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_lines_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_lines_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_lines_vendor_product_id_fkey"
+            columns: ["vendor_product_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recipes: {
         Row: {
           consume_ratio: number
@@ -902,6 +1248,169 @@ export type Database = {
           },
         ]
       }
+      vendor_payments: {
+        Row: {
+          amount: number
+          business_date: string
+          created_at: string
+          created_by: string | null
+          id: string
+          mode: Database["public"]["Enums"]["purchase_pay_mode"]
+          note: string | null
+          restaurant_id: string
+          updated_at: string
+          vendor_id: string
+        }
+        Insert: {
+          amount: number
+          business_date: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mode?: Database["public"]["Enums"]["purchase_pay_mode"]
+          note?: string | null
+          restaurant_id: string
+          updated_at?: string
+          vendor_id: string
+        }
+        Update: {
+          amount?: number
+          business_date?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mode?: Database["public"]["Enums"]["purchase_pay_mode"]
+          note?: string | null
+          restaurant_id?: string
+          updated_at?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_payments_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_products: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          display_order: number
+          fixed_price: number | null
+          gst_applicable: boolean
+          id: string
+          is_active: boolean
+          name: string
+          name_tamil: string | null
+          price_mode: Database["public"]["Enums"]["price_mode"]
+          restaurant_id: string
+          unit: string
+          updated_at: string
+          vendor_id: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          display_order?: number
+          fixed_price?: number | null
+          gst_applicable?: boolean
+          id?: string
+          is_active?: boolean
+          name: string
+          name_tamil?: string | null
+          price_mode?: Database["public"]["Enums"]["price_mode"]
+          restaurant_id: string
+          unit?: string
+          updated_at?: string
+          vendor_id: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          display_order?: number
+          fixed_price?: number | null
+          gst_applicable?: boolean
+          id?: string
+          is_active?: boolean
+          name?: string
+          name_tamil?: string | null
+          price_mode?: Database["public"]["Enums"]["price_mode"]
+          restaurant_id?: string
+          unit?: string
+          updated_at?: string
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_products_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendors: {
+        Row: {
+          created_at: string
+          default_category_id: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          is_multi_product: boolean
+          name: string
+          name_tamil: string | null
+          phone: string | null
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_category_id?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          is_multi_product?: boolean
+          name: string
+          name_tamil?: string | null
+          phone?: string | null
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_category_id?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          is_multi_product?: boolean
+          name?: string
+          name_tamil?: string | null
+          phone?: string | null
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendors_default_category_id_fkey"
+            columns: ["default_category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       waiter_allocations: {
         Row: {
           created_at: string
@@ -1017,6 +1526,16 @@ export type Database = {
         Returns: Json
       }
       request_bill: { Args: { _session_id: string }; Returns: Json }
+      section_finance: {
+        Args: { _business_date: string; _section_key: string }
+        Returns: {
+          card_total: number
+          cash_sales_total: number
+          gpay_total: number
+          sales_total: number
+          swiggy_total: number
+        }[]
+      }
       send_kot: {
         Args: { _items: Json; _note?: string; _session_id: string }
         Returns: Json
@@ -1036,6 +1555,7 @@ export type Database = {
         Returns: Json
       }
       sync_table_group: { Args: { _group_id: string }; Returns: undefined }
+      vendor_due_balance: { Args: { _vendor_id: string }; Returns: number }
       verify_staff_pin: { Args: { _pin: string }; Returns: string }
       void_kot_item: {
         Args: {
@@ -1049,6 +1569,14 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "manager" | "cashier" | "waiter" | "kitchen"
+      cashflow_sign: "add" | "subtract"
+      cashflow_source:
+        | "manual"
+        | "auto_sales"
+        | "auto_gpay"
+        | "auto_card"
+        | "auto_swiggy"
+        | "auto_cash_expense"
       kot_item_status: "pending" | "preparing" | "ready" | "served" | "void"
       kot_status: "pending" | "preparing" | "ready" | "served" | "void"
       ledger_reason:
@@ -1060,6 +1588,9 @@ export type Database = {
         | "adjustment"
       order_channel: "dinein" | "takeaway"
       payment_mode: "cash" | "upi" | "card" | "other"
+      price_mode: "fixed" | "variable"
+      purchase_pay_mode: "cash" | "online"
+      recon_status: "draft" | "finalised"
       session_status: "open" | "bill_requested" | "settled" | "voided"
       stock_mode: "counted" | "unlimited"
       stock_pool_type: "prepared_base" | "raw_ingredient"
@@ -1198,6 +1729,15 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "manager", "cashier", "waiter", "kitchen"],
+      cashflow_sign: ["add", "subtract"],
+      cashflow_source: [
+        "manual",
+        "auto_sales",
+        "auto_gpay",
+        "auto_card",
+        "auto_swiggy",
+        "auto_cash_expense",
+      ],
       kot_item_status: ["pending", "preparing", "ready", "served", "void"],
       kot_status: ["pending", "preparing", "ready", "served", "void"],
       ledger_reason: [
@@ -1210,6 +1750,9 @@ export const Constants = {
       ],
       order_channel: ["dinein", "takeaway"],
       payment_mode: ["cash", "upi", "card", "other"],
+      price_mode: ["fixed", "variable"],
+      purchase_pay_mode: ["cash", "online"],
+      recon_status: ["draft", "finalised"],
       session_status: ["open", "bill_requested", "settled", "voided"],
       stock_mode: ["counted", "unlimited"],
       stock_pool_type: ["prepared_base", "raw_ingredient"],
