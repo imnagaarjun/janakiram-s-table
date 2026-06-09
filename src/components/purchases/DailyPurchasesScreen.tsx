@@ -44,6 +44,7 @@ interface Vendor {
   name: string;
   name_tamil: string | null;
   is_multi_product: boolean;
+  is_fixed_amount: boolean;
   default_category_id: string | null;
   is_active: boolean;
   display_order: number;
