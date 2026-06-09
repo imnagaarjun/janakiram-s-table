@@ -149,8 +149,8 @@ export function DailyPurchasesScreen() {
       const vLines = (l.data ?? []).filter((x: PurchaseLine) => x.vendor_id === ven.id);
       if (ven.is_multi_product) {
         const vProds = (p.data ?? []).filter((x: VendorProduct) => x.vendor_id === ven.id);
-        d[ven.id] = vProds.map((pr) => {
-          const ex = vLines.find((x) => x.vendor_product_id === pr.id);
+        d[ven.id] = vProds.map((pr: VendorProduct) => {
+          const ex = vLines.find((x: PurchaseLine) => x.vendor_product_id === pr.id);
           return {
             vendor_product_id: pr.id,
             qty: ex ? String(ex.qty) : "",
