@@ -22,6 +22,7 @@ import { Route as AuthenticatedPurchasesRouteImport } from './routes/_authentica
 import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
 import { Route as AuthenticatedMenuRouteImport } from './routes/_authenticated/menu'
 import { Route as AuthenticatedKdsRouteImport } from './routes/_authenticated/kds'
+import { Route as AuthenticatedCashReconRouteImport } from './routes/_authenticated/cash-recon'
 import { Route as AuthenticatedCashConfigRouteImport } from './routes/_authenticated/cash-config'
 import { Route as AuthenticatedOrderSessionIdRouteImport } from './routes/_authenticated/order.$sessionId'
 import { Route as AuthenticatedBillSessionIdRouteImport } from './routes/_authenticated/bill.$sessionId'
@@ -90,6 +91,11 @@ const AuthenticatedKdsRoute = AuthenticatedKdsRouteImport.update({
   path: '/kds',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCashReconRoute = AuthenticatedCashReconRouteImport.update({
+  id: '/cash-recon',
+  path: '/cash-recon',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedCashConfigRoute = AuthenticatedCashConfigRouteImport.update({
   id: '/cash-config',
   path: '/cash-config',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cash-config': typeof AuthenticatedCashConfigRoute
+  '/cash-recon': typeof AuthenticatedCashReconRoute
   '/kds': typeof AuthenticatedKdsRoute
   '/menu': typeof AuthenticatedMenuRoute
   '/more': typeof AuthenticatedMoreRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/cash-config': typeof AuthenticatedCashConfigRoute
+  '/cash-recon': typeof AuthenticatedCashReconRoute
   '/kds': typeof AuthenticatedKdsRoute
   '/menu': typeof AuthenticatedMenuRoute
   '/more': typeof AuthenticatedMoreRoute
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/cash-config': typeof AuthenticatedCashConfigRoute
+  '/_authenticated/cash-recon': typeof AuthenticatedCashReconRoute
   '/_authenticated/kds': typeof AuthenticatedKdsRoute
   '/_authenticated/menu': typeof AuthenticatedMenuRoute
   '/_authenticated/more': typeof AuthenticatedMoreRoute
@@ -167,6 +176,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/cash-config'
+    | '/cash-recon'
     | '/kds'
     | '/menu'
     | '/more'
@@ -184,6 +194,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/cash-config'
+    | '/cash-recon'
     | '/kds'
     | '/menu'
     | '/more'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/cash-config'
+    | '/_authenticated/cash-recon'
     | '/_authenticated/kds'
     | '/_authenticated/menu'
     | '/_authenticated/more'
@@ -315,6 +327,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKdsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/cash-recon': {
+      id: '/_authenticated/cash-recon'
+      path: '/cash-recon'
+      fullPath: '/cash-recon'
+      preLoaderRoute: typeof AuthenticatedCashReconRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/cash-config': {
       id: '/_authenticated/cash-config'
       path: '/cash-config'
@@ -341,6 +360,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCashConfigRoute: typeof AuthenticatedCashConfigRoute
+  AuthenticatedCashReconRoute: typeof AuthenticatedCashReconRoute
   AuthenticatedKdsRoute: typeof AuthenticatedKdsRoute
   AuthenticatedMenuRoute: typeof AuthenticatedMenuRoute
   AuthenticatedMoreRoute: typeof AuthenticatedMoreRoute
@@ -357,6 +377,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCashConfigRoute: AuthenticatedCashConfigRoute,
+  AuthenticatedCashReconRoute: AuthenticatedCashReconRoute,
   AuthenticatedKdsRoute: AuthenticatedKdsRoute,
   AuthenticatedMenuRoute: AuthenticatedMenuRoute,
   AuthenticatedMoreRoute: AuthenticatedMoreRoute,
@@ -382,3 +403,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
