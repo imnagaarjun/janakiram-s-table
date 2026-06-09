@@ -65,6 +65,15 @@ function Page() {
             <span className="flex-1 font-medium">Daily purchases</span>
           </Link>
         )}
+        {hasRole("admin", "manager") && (
+          <Link
+            to="/cash-config"
+            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
+          >
+            <Wallet className="h-5 w-5 text-muted-foreground" />
+            <span className="flex-1 font-medium">Cash reconciliation setup</span>
+          </Link>
+        )}
         {hasRole("admin") && (
           <Link
             to="/settings"
