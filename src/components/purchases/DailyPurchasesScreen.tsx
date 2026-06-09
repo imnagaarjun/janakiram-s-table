@@ -489,14 +489,15 @@ export function DailyPurchasesScreen() {
                           <Button
                             size="sm"
                             onClick={() => saveVendor(v)}
-                            disabled={savingVendor === v.id}
+                            disabled={savingVendor === v.id || !dirty.has(v.id)}
+                            variant={dirty.has(v.id) ? "default" : "outline"}
                           >
                             {savingVendor === v.id ? (
                               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                             ) : (
                               <Save className="h-4 w-4 mr-2" />
                             )}
-                            Save vendor day
+                            {savingVendor === v.id ? "Saving…" : dirty.has(v.id) ? "Save" : "Saved"}
                           </Button>
                         </div>
                       </div>
