@@ -421,9 +421,7 @@ export function DailyPurchasesScreen() {
                           <div className="inline-flex rounded-lg border border-border overflow-hidden">
                             <button
                               type="button"
-                              onClick={() =>
-                                setVendorPayMode((m) => ({ ...m, [v.id]: "cash" }))
-                              }
+                              onClick={() => setPayMode(v.id, "cash")}
                               className={cn(
                                 "px-3 py-1.5 text-xs font-medium flex items-center gap-1",
                                 (vendorPayMode[v.id] ?? "cash") === "cash"
@@ -435,9 +433,7 @@ export function DailyPurchasesScreen() {
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                setVendorPayMode((m) => ({ ...m, [v.id]: "online" }))
-                              }
+                              onClick={() => setPayMode(v.id, "online")}
                               className={cn(
                                 "px-3 py-1.5 text-xs font-medium flex items-center gap-1 border-l border-border",
                                 (vendorPayMode[v.id] ?? "cash") === "online"
@@ -448,9 +444,6 @@ export function DailyPurchasesScreen() {
                               <Smartphone className="h-3.5 w-3.5" /> Online
                             </button>
                           </div>
-                          <span className="text-[11px] text-muted-foreground">
-                            Applies to all lines for this vendor today
-                          </span>
                         </div>
 
                         {v.is_multi_product ? (
