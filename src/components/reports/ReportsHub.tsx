@@ -24,13 +24,13 @@ interface Invoice {
   discount: number; round_off: number; total: number;
   complimentary: boolean; discount_reason: string | null;
   issued_at: string; voided_at: string | null; void_reason: string | null;
-  issued_by: string | null;
+  issued_by: string | null; business_date: string;
 }
 interface Payment { id: string; invoice_id: string; mode: string; amount: number; ref_no: string | null; created_at: string }
 interface Session { id: string; table_code: string | null; channel: string; pax: number; opened_at: string; closed_at: string | null; status: string; opened_by: string | null }
-interface Kot { id: string; session_id: string; kot_no: number; sent_at: string; status: string; created_by: string | null; updated_at: string }
+interface Kot { id: string; session_id: string; kot_no: number; sent_at: string; status: string; created_by: string | null; updated_at: string; business_date: string }
 interface KotItem { id: string; kot_id: string; menu_item_id: string; qty: number; status: string; note: string | null; created_at: string }
-interface Ledger { id: string; pool_id: string; qty_delta: number; reason: string; note: string | null; created_at: string; created_by: string | null }
+interface Ledger { id: string; pool_id: string; qty_delta: number; reason: string; note: string | null; created_at: string; created_by: string | null; business_date: string }
 interface Pool { id: string; name: string; type: string; unit: string }
 interface Item { id: string; name: string; category_id: string | null; is_active: boolean; is_86: boolean; stock_mode: string }
 interface Cat { id: string; name: string }
@@ -73,10 +73,10 @@ export function ReportsHub() {
     const [
       invoicesR, sessionsR, kotsR, ledgerR, poolsR, itemsR, catsR, pricesR, allocsR, waitersR, auditR, profilesR,
     ] = await Promise.all([
-      db.from("invoices").select("*").gte("issued_at", fromIso).lte("issued_at", toIso).order("issued_at"),
+      db.from("invoices").select("*").gte("business_date", fromDate).lte("business_date", toDate).order("issued_at"),
       db.from("order_sessions").select("*").gte("opened_at", fromIso).lte("opened_at", toIso),
-      db.from("kots").select("*").gte("sent_at", fromIso).lte("sent_at", toIso),
-      db.from("stock_ledger").select("*").gte("created_at", fromIso).lte("created_at", toIso),
+      db.from("kots").select("*").gte("business_date", fromDate).lte("business_date", toDate),
+      db.from("stock_ledger").select("*").gte("business_date", fromDate).lte("business_date", toDate),
       db.from("stock_pools").select("id,name,type,unit"),
       db.from("menu_items").select("id,name,category_id,is_active,is_86,stock_mode"),
       db.from("categories").select("id,name"),
@@ -325,7 +325,7 @@ function DailySales({ data, range }: { data: Dataset; range: DateRange }) {
   for (const inv of settled) {
     const s = sessionMap.get(inv.session_id);
     const ch = s?.channel ?? "—";
-    const day = istDayKey(inv.issued_at);
+    const day = inv.business_date;   // authoritative: set server-side at settlement
     const key = `${day}::${ch}`;
     const r = map.get(key) ?? { day, channel: ch, bills: 0, base: 0, cgst: 0, sgst: 0, service: 0, discount: 0, total: 0 };
     r.bills += 1; r.base += +inv.base; r.cgst += +inv.cgst; r.sgst += +inv.sgst;
