@@ -64,9 +64,14 @@ export function TakeawaySettleDialog({
   ]);
   const [submitting, setSubmitting] = useState(false);
   const defaultsSet = useRef(false);
+  // One idempotency key per dialog open: generated fresh each time the dialog
+  // opens, reused on retry, so network replays don't double-send the KOT or
+  // create two invoices. Cleared after a successful settle in onSettled flow.
+  const idemKeyRef = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
     if (open) {
+      idemKeyRef.current = crypto.randomUUID();
       setSvcPct(serviceChargePctDefault);
       setDiscAmt("");
       setDiscPct("");
@@ -148,6 +153,7 @@ export function TakeawaySettleDialog({
         _kot_note: kotNote ?? "",
         _params: params,
         _payments: payArr,
+        _idempotency_key: idemKeyRef.current,
       });
       if (error) throw error;
       onSettled(data as unknown as TakeawaySettleResult);
