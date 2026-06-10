@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { db } from "@/lib/db";
 import { supabase } from "@/integrations/supabase/client";
 import { useDeviceMode } from "@/hooks/use-device-mode";
@@ -89,6 +90,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
   const [notes, setNotes] = useState("");
   const defaultAmountSet = useRef(false);
   const [settling, setSettling] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<{
     invoice_no: string;
     total: number;
@@ -216,11 +218,17 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
     setPayments([{ key: crypto.randomUUID(), mode: "cash", amount: totals.total.toFixed(2), ref_no: "" }]);
   }
 
-  async function settle() {
+  // Validate inputs and open the confirmation preview — no RPC yet.
+  function openPreview() {
     if (lines.length === 0 && !complimentary) {
       toast.error("No items to bill");
       return;
     }
+    setPreviewOpen(true);
+  }
+
+  // Called only after the cashier confirms in the AlertDialog.
+  async function doSettle() {
     setSettling(true);
     try {
       const params = {
@@ -255,6 +263,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
         discount: number;
         round_off: number;
       };
+      setPreviewOpen(false);
       setConfirmation(r);
       toast.success(`Invoice ${r.invoice_no} settled`);
       await load();
@@ -574,10 +583,9 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       <Button
         size="lg"
         className="w-full h-14 text-base font-bold"
-        onClick={settle}
+        onClick={openPreview}
         disabled={settling || (!complimentary && lines.length === 0)}
       >
-        {settling ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
         {complimentary ? "Mark complimentary" : `Settle · ${inr(totals.total)}`}
       </Button>
     </div>
@@ -597,6 +605,78 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
           {actionsPanel}
         </div>
       )}
+
+      {/* Pre-settle confirmation: shown BEFORE the RPC is called */}
+      <AlertDialog open={previewOpen} onOpenChange={(v) => !settling && setPreviewOpen(v)}>
+        <AlertDialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm settlement</AlertDialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {session.table_code ? `Table ${session.table_code}` : "Takeaway"} · {session.pax} pax
+            </p>
+          </AlertDialogHeader>
+
+          {/* Line items */}
+          <div className="rounded-lg border divide-y divide-border text-sm">
+            {lines.map((l) => (
+              <div key={l.menu_item_id} className="flex justify-between px-3 py-1.5 tabular-nums">
+                <span className="truncate mr-2">{l.qty} × {l.name}</span>
+                <span className="shrink-0 font-medium">{inr(l.line_total)}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Tax breakdown */}
+          <div className="rounded-lg border bg-muted/30 p-3 space-y-1 text-sm tabular-nums">
+            <Row k="Taxable" v={inr(totals.base - totals.service_charge)} />
+            {totals.service_charge > 0 && <Row k={`Service (${svcPct}%)`} v={inr(totals.service_charge)} />}
+            <Row k="CGST" v={inr(totals.cgst)} />
+            <Row k="SGST" v={inr(totals.sgst)} />
+            {totals.discount > 0 && <Row k="Discount" v={`− ${inr(totals.discount)}`} />}
+            {totals.round_off !== 0 && <Row k="Round off" v={inr(totals.round_off)} />}
+            <div className="border-t border-border pt-1.5 mt-1 flex justify-between font-bold">
+              <span>Total</span>
+              <span className="text-lg">{inr(totals.total)}</span>
+            </div>
+          </div>
+
+          {/* Payment breakdown */}
+          {!complimentary && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-1 text-sm tabular-nums">
+              {payments.filter((p) => Number(p.amount) > 0).map((p) => (
+                <Row
+                  key={p.key}
+                  k={<span className="uppercase">{p.mode}{p.ref_no ? ` · ${p.ref_no}` : ""}</span>}
+                  v={inr(Number(p.amount))}
+                />
+              ))}
+              <div className="border-t border-border pt-1.5 mt-1">
+                <Row
+                  k={balance > 0 ? "Balance due" : "Change due"}
+                  v={
+                    <span className={balance > 0 ? "text-destructive font-bold" : "text-emerald-600 font-bold"}>
+                      {inr(Math.abs(balance))}
+                    </span>
+                  }
+                />
+              </div>
+            </div>
+          )}
+          {complimentary && (
+            <p className="text-sm text-center text-muted-foreground py-1">Complimentary — no charge</p>
+          )}
+
+          <AlertDialogFooter className="gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setPreviewOpen(false)} disabled={settling}>
+              Go back
+            </Button>
+            <Button className="flex-1 font-bold" onClick={doSettle} disabled={settling}>
+              {settling ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Confirm &amp; settle
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <SettlementDialog
         open={!!confirmation}
