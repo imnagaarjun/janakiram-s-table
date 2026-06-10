@@ -188,6 +188,9 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   }
 
   const sendingRef = useRef(false);
+  // One idempotency key per draft: generated on first send attempt, reused on
+  // retry (so a network replay can't double-send), cleared once the KOT lands.
+  const idemKeyRef = useRef<string | null>(null);
 
   function printProForma(invoiceTag: string, extraDraft: DraftLine[] = [], opts?: { noteOverride?: string | null }) {
     try {
@@ -246,11 +249,13 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
 
     sendingRef.current = true;
     setSending(true);
+    if (!idemKeyRef.current) idemKeyRef.current = crypto.randomUUID();
     const payload = draft.map((d) => ({ menu_item_id: d.menu_item_id, qty: d.qty, note: d.note ?? null }));
     const { data, error } = await db.rpc("send_kot", {
       _session_id: sessionId,
       _items: payload,
       _note: kotNote || null,
+      _idempotency_key: idemKeyRef.current,
     });
     setSending(false);
     sendingRef.current = false;
@@ -259,6 +264,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       load();
       return;
     }
+    idemKeyRef.current = null;
     const kotNo = (data as { kot_no: number }).kot_no;
     toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
 

@@ -12,17 +12,20 @@ export const pinLogin = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: profile, error } = await supabaseAdmin
-      .from("profiles")
-      .select("auth_email")
-      .eq("pin", data.pin)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!profile) throw new Error("Invalid PIN");
+    const { data: authEmail, error } = await supabaseAdmin.rpc("pin_login_lookup", {
+      _pin: data.pin,
+    });
+    if (error) {
+      if (error.message.includes("PIN_LOCKED")) {
+        throw new Error("Too many failed attempts. Try again in 5 minutes.");
+      }
+      throw new Error(error.message);
+    }
+    if (!authEmail) throw new Error("Invalid PIN");
 
     const { data: link, error: lErr } = await supabaseAdmin.auth.admin.generateLink({
       type: "magiclink",
-      email: (profile as { auth_email: string }).auth_email,
+      email: authEmail as string,
     });
     if (lErr || !link?.properties?.hashed_token) {
       throw new Error(lErr?.message ?? "Could not start session");

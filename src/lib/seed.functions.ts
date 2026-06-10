@@ -40,10 +40,15 @@ export const ensureSeed = createServerFn({ method: "POST" }).handler(async () =>
     id: userId,
     restaurant_id: rest.id,
     name: "Admin",
-    pin: "1234",
     auth_email: adminEmail,
   });
   if (pErr) throw new Error(pErr.message);
+
+  const { error: pinErr } = await supabaseAdmin.rpc("set_staff_pin", {
+    _user_id: userId,
+    _pin: "1234",
+  });
+  if (pinErr) throw new Error(pinErr.message);
 
   const { error: roleErr } = await supabaseAdmin.from("user_roles").insert({
     user_id: userId,
