@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Send, Trash2, ChevronLeft, ShoppingBag, Star } from "lucide-react";
+import { Loader2, Send, Trash2, ChevronLeft, ShoppingBag, Star, Pencil, Check, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -85,6 +85,10 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [takeawaySettleOpen, setTakeawaySettleOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const pendingNavRef = useRef<(() => void) | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [editingPax, setEditingPax] = useState(false);
+  const [paxInput, setPaxInput] = useState("");
 
   const load = useCallback(async () => {
     const [sRes, mRes, cRes, rRes, lRes, kRes, kiRes] = await Promise.all([
@@ -133,6 +137,34 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     idemKeyRef.current = null;
     sessionStorage.removeItem(draftStorageKey);
   }, [draftStorageKey]);
+
+  async function cancelSession() {
+    if (!session) return;
+    setCancelling(true);
+    try {
+      // Delete session (cascade removes kots/kot_items if any — but there are none here)
+      await db.from("order_sessions").delete().eq("id", sessionId);
+      // Free the table
+      if (session.table_code) {
+        await db.from("tables").update({ status: "free" }).eq("code", session.table_code);
+      }
+      clearDraft();
+      nav({ to: "/tables" });
+    } catch (e) {
+      toast.error("Could not cancel session");
+    } finally {
+      setCancelling(false);
+      setCancelOpen(false);
+    }
+  }
+
+  async function savePax(newPax: number) {
+    if (!session || newPax < 1) return;
+    const { error } = await db.from("order_sessions").update({ pax: newPax }).eq("id", sessionId);
+    if (error) { toast.error("Could not update pax"); return; }
+    setSession((s) => s ? { ...s, pax: newPax } : s);
+    setEditingPax(false);
+  }
 
   // Restore draft from sessionStorage on mount
   useEffect(() => {
@@ -192,17 +224,19 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [draft.length]);
 
-  // Guarded navigate: show confirmation dialog when draft is non-empty
+  // Guarded navigate: show cancel dialog when no KOTs sent, leave dialog when draft non-empty
   const guardedNav = useCallback(
     (destination: Parameters<typeof nav>[0]) => {
       if (draft.length > 0) {
         pendingNavRef.current = () => nav(destination);
         setLeaveOpen(true);
+      } else if (sentKots.length === 0 && session?.channel === "dinein" && session?.table_code) {
+        setCancelOpen(true);
       } else {
         nav(destination);
       }
     },
-    [draft.length, nav],
+    [draft.length, sentKots.length, session, nav],
   );
 
   const itemsById = useMemo(() => {
@@ -471,11 +505,46 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <div className="font-bold leading-tight">
+          <div className="font-bold leading-tight flex items-center gap-1.5 flex-wrap">
             {session.table_code ? `Table ${session.table_code}` : "Takeaway"}{" "}
             <span className="text-xs text-muted-foreground font-normal">
-              · {session.channel === "dinein" ? "Dine-in" : "Takeaway"} · {session.pax} pax
+              · {session.channel === "dinein" ? "Dine-in" : "Takeaway"}
             </span>
+            {/* Pax inline editor */}
+            {editingPax ? (
+              <span className="flex items-center gap-1 ml-1">
+                <Input
+                  autoFocus
+                  type="number"
+                  min={1}
+                  value={paxInput}
+                  onChange={(e) => setPaxInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") savePax(parseInt(paxInput, 10));
+                    if (e.key === "Escape") setEditingPax(false);
+                  }}
+                  className="h-7 w-16 text-xs px-2"
+                />
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => savePax(parseInt(paxInput, 10))}>
+                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingPax(false)}>
+                  <X className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground font-normal">
+                · {session.pax} pax
+                {session.status !== "bill_requested" && session.status !== "settled" && (
+                  <button
+                    onClick={() => { setPaxInput(String(session.pax)); setEditingPax(true); }}
+                    className="inline-flex items-center hover:text-foreground transition-colors"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-muted-foreground">
             {sentKots.length} KOT sent · {sentLines.filter((l) => l.status !== "void").length} active lines
@@ -695,6 +764,27 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
               }}
             >
               Leave anyway
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={cancelOpen} onOpenChange={(v) => !cancelling && setCancelOpen(v)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Free the table?</AlertDialogTitle>
+            <AlertDialogDescription>
+              No items have been ordered yet. Cancel this session and mark{" "}
+              {session?.table_code ? `Table ${session.table_code}` : "the table"} as free?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={cancelling}>
+              Keep session
+            </Button>
+            <Button variant="destructive" onClick={cancelSession} disabled={cancelling}>
+              {cancelling && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Cancel &amp; free table
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
