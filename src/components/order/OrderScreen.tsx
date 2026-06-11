@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Send, Trash2, ChevronLeft, ShoppingBag, Star } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,6 +83,8 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   const [voidLine, setVoidLine] = useState<SentLine | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [takeawaySettleOpen, setTakeawaySettleOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const pendingNavRef = useRef<(() => void) | null>(null);
 
   const load = useCallback(async () => {
     const [sRes, mRes, cRes, rRes, lRes, kRes, kiRes] = await Promise.all([
@@ -115,6 +125,33 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     setLoading(false);
   }, [sessionId]);
 
+  const draftStorageKey = `kot_draft_${sessionId}`;
+
+  const clearDraft = useCallback(() => {
+    setDraft([]);
+    setKotNote("");
+    idemKeyRef.current = null;
+    sessionStorage.removeItem(draftStorageKey);
+  }, [draftStorageKey]);
+
+  // Restore draft from sessionStorage on mount
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(draftStorageKey);
+      if (raw) {
+        const saved = JSON.parse(raw) as { items: DraftLine[]; note: string; idemKey: string | null };
+        if (saved.items?.length > 0) {
+          setDraft(saved.items);
+          setKotNote(saved.note ?? "");
+          idemKeyRef.current = saved.idemKey ?? null;
+        }
+      }
+    } catch {
+      // ignore corrupt storage
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -131,6 +168,42 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       supabase.removeChannel(ch);
     };
   }, [sessionId, load]);
+
+  // Persist draft to sessionStorage on every change
+  useEffect(() => {
+    if (draft.length === 0) {
+      sessionStorage.removeItem(draftStorageKey);
+    } else {
+      sessionStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({ items: draft, note: kotNote, idemKey: idemKeyRef.current }),
+      );
+    }
+  }, [draft, kotNote, draftStorageKey]);
+
+  // beforeunload guard when draft has items
+  useEffect(() => {
+    if (draft.length === 0) return;
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [draft.length]);
+
+  // Guarded navigate: show confirmation dialog when draft is non-empty
+  const guardedNav = useCallback(
+    (destination: Parameters<typeof nav>[0]) => {
+      if (draft.length > 0) {
+        pendingNavRef.current = () => nav(destination);
+        setLeaveOpen(true);
+      } else {
+        nav(destination);
+      }
+    },
+    [draft.length, nav],
+  );
 
   const itemsById = useMemo(() => {
     const m = new Map<string, MenuItem>();
@@ -264,7 +337,6 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       load();
       return;
     }
-    idemKeyRef.current = null;
     const kotNo = (data as { kot_no: number }).kot_no;
     toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
 
@@ -279,12 +351,11 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       waiterName,
     });
 
-    setDraft([]);
-    setKotNote("");
+    clearDraft();
     setCartOpen(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, kotNote, sessionId, restaurant, session, load, waiterName]);
+  }, [draft, kotNote, sessionId, restaurant, session, load, waiterName, clearDraft]);
 
   // Build BillLine[] from current draft for the takeaway settle dialog
   const draftBillLines = useMemo<BillLine[]>(() => {
@@ -344,8 +415,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     }
 
     setTakeawaySettleOpen(false);
-    setDraft([]);
-    setKotNote("");
+    clearDraft();
     setCartOpen(false);
     nav({ to: "/tables" });
   }
@@ -397,7 +467,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     <div className="min-h-screen flex flex-col">
       {/* Top bar */}
       <header className="border-b bg-surface px-3 py-2 flex items-center gap-2 shadow-sm sticky top-0 z-10">
-        <Button variant="ghost" size="icon" onClick={() => nav({ to: "/tables" })}>
+        <Button variant="ghost" size="icon" onClick={() => guardedNav({ to: "/tables" })}>
           <ChevronLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
@@ -602,6 +672,33 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         serviceChargePctDefault={restaurant?.service_charge_pct ?? 0}
         onSettled={onTakeawaySettled}
       />
+
+      <AlertDialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave without sending?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved items in your order. Leave anyway?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setLeaveOpen(false)}>
+              Stay
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setLeaveOpen(false);
+                const go = pendingNavRef.current;
+                pendingNavRef.current = null;
+                go?.();
+              }}
+            >
+              Leave anyway
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
