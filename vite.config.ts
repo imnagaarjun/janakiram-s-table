@@ -4,11 +4,12 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
-const isVercel = !!process.env.VERCEL;
+// DEPLOYMENT_TARGET=vercel must be set in Vercel project env vars
+const preset = process.env.DEPLOYMENT_TARGET === "vercel" ? "vercel" : undefined;
 
 export default defineConfig({
   plugins: [
-    tanstackStart(isVercel ? { server: { preset: "vercel" } } : {}),
+    tanstackStart(preset ? { server: { preset } } : {}),
     react(),
     tailwindcss(),
     tsconfigPaths(),
