@@ -176,10 +176,12 @@ export function ReportsHub() {
     { value: "recon", label: "Cash Recon", render: () => <CashReconArchive range={range} /> },
     { value: "drawings", label: "Owner Drawings", render: () => <OwnersDrawingsReport range={range} /> },
     { value: "pnl", label: "Daily P&L", render: () => <DailyPnLReport range={range} /> },
+    { value: "audit", label: "Audit Log", render: () => <AuditLog {...{ data, profileMap }} /> },
   ];
 
   let tabs: TabDef[];
-  if (isManager) tabs = allTabs;
+  if (isAdmin) tabs = allTabs;
+  else if (isManager) tabs = allTabs.filter((t) => t.value !== "audit");
   else if (isCashier) tabs = allTabs.filter((t) => ["daily", "bills", "pay", "z"].includes(t.value));
   else if (isWaiter) {
     tabs = [{
@@ -835,5 +837,54 @@ function ZReport({ data, range }: { data: Dataset; range: DateRange }) {
         { label: "GST", value: inr(cgst + sgst) },
       ]}
     />
+  );
+}
+
+function AuditLog({ data, profileMap }: { data: Dataset; profileMap: Map<string, string> }) {
+  const [filter, setFilter] = useState("");
+  const rows = data.audit.filter(
+    (a) =>
+      !filter ||
+      a.action.toLowerCase().includes(filter.toLowerCase()) ||
+      a.entity.toLowerCase().includes(filter.toLowerCase()) ||
+      (profileMap.get(a.actor ?? "") ?? "").toLowerCase().includes(filter.toLowerCase()),
+  );
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          className="border border-border rounded-lg px-3 py-2 text-sm flex-1 max-w-xs bg-background"
+          placeholder="Filter by action, entity or actor…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        <span className="text-xs text-muted-foreground">{rows.length} events</span>
+      </div>
+      <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+        {rows.length === 0 && (
+          <div className="p-6 text-center text-sm text-muted-foreground">No audit events in this range.</div>
+        )}
+        {rows.map((a) => (
+          <details key={a.id} className="group">
+            <summary className="flex items-center gap-3 p-3 cursor-pointer list-none hover:bg-accent/40">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm">{a.action}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">{a.entity}</span>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {profileMap.get(a.actor ?? "") ?? a.actor ?? "System"} · {fmtIST(new Date(a.ts), "dd MMM HH:mm:ss")}
+                </div>
+              </div>
+            </summary>
+            <div className="px-4 pb-3 text-xs font-mono text-muted-foreground space-y-1">
+              {a.before !== null && <div><span className="text-red-500">Before:</span> {JSON.stringify(a.before, null, 2)}</div>}
+              {a.after !== null && <div><span className="text-green-600">After:</span> {JSON.stringify(a.after, null, 2)}</div>}
+              {a.entity_id && <div>ID: {a.entity_id}</div>}
+            </div>
+          </details>
+        ))}
+      </div>
+    </div>
   );
 }

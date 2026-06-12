@@ -61,6 +61,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [refresh, loadFor]);
 
+  // Touch last_active_at every 30 minutes while the tab is open
+  useEffect(() => {
+    if (!userId) return;
+    const interval = setInterval(async () => {
+      try {
+        await db.rpc("touch_active");
+      } catch {
+        // non-critical
+      }
+    }, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);

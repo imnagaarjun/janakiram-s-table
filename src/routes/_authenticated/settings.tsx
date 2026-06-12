@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { RoleGuard } from "@/components/RoleGuard";
@@ -11,6 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
+const MODULES = [
+  { key: "tables", label: "Tables & Ordering" },
+  { key: "menu", label: "Menu Management" },
+  { key: "kds", label: "Kitchen Display (KDS)" },
+  { key: "reports", label: "Reports" },
+  { key: "stock", label: "Daily Stock" },
+  { key: "waiters", label: "Waiter Management" },
+  { key: "vendors", label: "Vendors" },
+  { key: "purchases", label: "Purchases" },
+  { key: "cash_recon", label: "Cash Reconciliation" },
+  { key: "users", label: "User Management" },
+];
 
 export const Route = createFileRoute("/_authenticated/settings")({ component: Page });
 
@@ -29,6 +42,19 @@ function SettingsInner() {
   const [uploading, setUploading] = useState(false);
   const [rest, setRest] = useState<Restaurant | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [moduleMap, setModuleMap] = useState<Map<string, boolean>>(new Map());
+  const [savingModules, setSavingModules] = useState(false);
+
+  const loadModules = useCallback(async () => {
+    if (!profile) return;
+    const { data } = await db
+      .from("module_settings")
+      .select("module,enabled")
+      .eq("restaurant_id", profile.restaurant_id);
+    const m = new Map<string, boolean>();
+    (data ?? []).forEach((r: { module: string; enabled: boolean }) => m.set(r.module, r.enabled));
+    setModuleMap(m);
+  }, [profile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,12 +71,29 @@ function SettingsInner() {
         setRest(data);
         if (data?.logo_url) await refreshLogo(data.logo_url);
       }
+      await loadModules();
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [profile]);
+  }, [profile, loadModules]);
+
+  async function toggleModule(key: string) {
+    if (!profile) return;
+    const current = moduleMap.get(key) !== false;
+    const next = !current;
+    setModuleMap((m) => new Map(m).set(key, next));
+    setSavingModules(true);
+    const { error } = await db
+      .from("module_settings")
+      .upsert({ restaurant_id: profile.restaurant_id, module: key, enabled: next }, { onConflict: "restaurant_id,module" });
+    setSavingModules(false);
+    if (error) {
+      toast.error(error.message);
+      setModuleMap((m) => new Map(m).set(key, current));
+    }
+  }
 
   async function refreshLogo(path: string) {
     const { data } = await supabase.storage.from("logos").createSignedUrl(path, 3600);
@@ -183,6 +226,33 @@ function SettingsInner() {
           {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
           Save changes
         </Button>
+      </div>
+
+      {/* Modules */}
+      <div className="rounded-2xl border border-border bg-surface p-4 md:p-6 shadow-sm space-y-4 mt-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Modules</h2>
+          {savingModules && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+        </div>
+        <p className="text-sm text-muted-foreground">Toggle modules on or off for all staff. Disabled modules are hidden from the navigation.</p>
+        <div className="divide-y divide-border">
+          {MODULES.map(({ key, label }) => {
+            const on = moduleMap.get(key) !== false;
+            return (
+              <div key={key} className="flex items-center justify-between py-3">
+                <span className="text-sm font-medium">{label}</span>
+                <button
+                  onClick={() => toggleModule(key)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${on ? "bg-primary" : "bg-muted"}`}
+                  role="switch"
+                  aria-checked={on}
+                >
+                  <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition-transform duration-200 ${on ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

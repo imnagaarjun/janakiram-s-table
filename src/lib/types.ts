@@ -4,8 +4,11 @@ export interface Profile {
   id: string;
   restaurant_id: string;
   name: string;
-  pin: string;
+  pin_hash?: string;
   auth_email: string;
+  contact_email: string | null;
+  is_active: boolean;
+  last_active_at: string | null;
 }
 
 export interface Restaurant {

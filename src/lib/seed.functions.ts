@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 /**
- * Idempotently seeds one restaurant and one Admin user (PIN 1234) on first run.
+ * Idempotently seeds one restaurant and one Admin user (PIN 12345678) on first run.
  * Safe to call repeatedly — it only creates if no restaurant exists.
  */
 export const ensureSeed = createServerFn({ method: "POST" }).handler(async () => {
@@ -18,7 +18,7 @@ export const ensureSeed = createServerFn({ method: "POST" }).handler(async () =>
     .from("restaurants")
     .insert({
       name: "Hotel Sri Janakiram",
-      address: "",
+      address: "49 Tamil Sangam Road, Madurai",
       phone: "",
       business_day_close_time: "00:00",
     })
@@ -44,18 +44,19 @@ export const ensureSeed = createServerFn({ method: "POST" }).handler(async () =>
   });
   if (pErr) throw new Error(pErr.message);
 
-  const { error: pinErr } = await supabaseAdmin.rpc("set_staff_pin", {
-    _user_id: userId,
-    _pin: "1234",
-  });
-  if (pinErr) throw new Error(pinErr.message);
-
   const { error: roleErr } = await supabaseAdmin.from("user_roles").insert({
     user_id: userId,
     restaurant_id: rest.id,
     role: "admin",
   });
   if (roleErr) throw new Error(roleErr.message);
+
+  // Admin PIN must be 8 digits — insert role first so set_staff_pin allows it
+  const { error: pinErr } = await supabaseAdmin.rpc("set_staff_pin", {
+    _user_id: userId,
+    _pin: "12345678",
+  });
+  if (pinErr) throw new Error(pinErr.message);
 
   return { seeded: true as const };
 });
