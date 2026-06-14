@@ -420,6 +420,7 @@ export function UsersPanel() {
                     >
                       <Power className="h-4 w-4" />
                     </Button>
+                    {s.id !== profile?.id && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -429,6 +430,7 @@ export function UsersPanel() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                    )}
                   </div>
                 </div>
               )}

@@ -101,6 +101,8 @@ export function ItemEditor({
   const [pools, setPools] = useState<StockPool[]>([]);
   const [recipes, setRecipes] = useState<RecipeRow[]>([]);
   const [ownRootPool, setOwnRootPool] = useState(false);
+  // "portions" = simple own-pool tracking; "ingredients" = multi-pool recipe
+  const [trackingMode, setTrackingMode] = useState<"portions" | "ingredients">("portions");
   const [newPoolName, setNewPoolName] = useState("");
   const [newPoolType, setNewPoolType] = useState<"prepared_base" | "raw_ingredient">(
     "raw_ingredient",
@@ -137,7 +139,12 @@ export function ItemEditor({
         const p = pools.find((x) => x.id === rows[0].stock_pool_id);
         if (p && p.name === existing.name && rows[0].consume_ratio === 1) {
           setOwnRootPool(true);
+          setTrackingMode("portions");
+        } else {
+          setTrackingMode("ingredients");
         }
+      } else if (rows.length > 1) {
+        setTrackingMode("ingredients");
       }
     })();
   }, [existing, pools]);
@@ -502,113 +509,121 @@ export function ItemEditor({
             </div>
 
             {stockMode === "counted" && (
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label className="text-sm">Low-stock alert benchmark <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <div className="space-y-4">
+                {/* Tracking mode — simple two-option choice */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setTrackingMode("portions"); setOwnRootPool(true); setRecipes([]); }}
+                    className={`rounded-xl border p-3 text-left transition-colors ${trackingMode === "portions" ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
+                  >
+                    <div className="font-semibold text-sm">Portions</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Track ready portions (e.g. bowls of Mutton Chukka in the pot)</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTrackingMode("ingredients"); setOwnRootPool(false); }}
+                    className={`rounded-xl border p-3 text-left transition-colors ${trackingMode === "ingredients" ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
+                  >
+                    <div className="font-semibold text-sm">Ingredients</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Track by raw ingredients consumed per portion</div>
+                  </button>
+                </div>
+
+                {trackingMode === "portions" && (
+                  <p className="text-xs text-muted-foreground rounded-lg bg-accent/50 px-3 py-2">
+                    Set the opening count each day from the <strong>Daily Stock</strong> page. Availability drops by 1 each time this dish is ordered.
+                  </p>
+                )}
+
+                {trackingMode === "ingredients" && (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Ingredients used per portion</Label>
+                      {recipes.length === 0 && (
+                        <p className="text-xs text-muted-foreground">Add the ingredients this dish consumes each time it's ordered.</p>
+                      )}
+                      {recipes.map((r, idx) => {
+                        const pool = pools.find((p) => p.id === r.stock_pool_id);
+                        return (
+                          <div key={idx} className="flex items-center gap-2">
+                            <div className="flex-1 px-3 py-2 rounded-lg border border-border bg-accent/50 text-sm">
+                              <div className="font-medium">{pool?.name ?? "—"}</div>
+                              <div className="text-xs text-muted-foreground capitalize">{pool?.type === "raw_ingredient" ? "Raw ingredient" : "Ready-made base"}</div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={r.consume_ratio}
+                                onChange={(e) => updateRecipe(idx, parseFloat(e.target.value) || 0)}
+                                className="w-24 h-9"
+                              />
+                              <span className="text-xs text-muted-foreground">/ portion</span>
+                            </div>
+                            <Button type="button" variant="ghost" size="icon" onClick={() => removeRecipe(idx)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm">Add existing ingredient</Label>
+                      <Select value="" onValueChange={(v) => v && addRecipeRow(v)} disabled={availablePoolsForPicker.length === 0}>
+                        <SelectTrigger>
+                          <SelectValue placeholder={availablePoolsForPicker.length === 0 ? "No more ingredients" : "Pick an ingredient…"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availablePoolsForPicker.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.name} <span className="text-muted-foreground">({p.type === "raw_ingredient" ? "raw" : "base"})</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2 border-t border-border pt-3">
+                      <Label className="text-sm">Create new ingredient</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="e.g. Raw Egg"
+                          value={newPoolName}
+                          onChange={(e) => setNewPoolName(e.target.value)}
+                          className="flex-1"
+                        />
+                        <Select value={newPoolType} onValueChange={(v) => setNewPoolType(v as "prepared_base" | "raw_ingredient")}>
+                          <SelectTrigger className="w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="raw_ingredient">Raw ingredient</SelectItem>
+                            <SelectItem value="prepared_base">Ready-made base</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" onClick={createPool} disabled={!newPoolName.trim()}>
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Benchmark — applies to both modes */}
+                <div className="space-y-1 border-t border-border pt-3">
+                  <Label className="text-sm">Alert when stock drops to <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Input
                     type="number"
                     min={0}
                     inputMode="numeric"
-                    placeholder="e.g. 5 — alert when available qty drops to this"
+                    placeholder="e.g. 5"
                     value={benchmark}
                     onChange={(e) => setBenchmark(e.target.value.replace(/\D/g, ""))}
+                    className="w-32"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Notifies admins & assigned staff when availability falls to this number (yellow), and again at zero (red). Leave blank for no low-stock alert.
-                  </p>
-                </div>
-
-                <Toggle
-                  label="Use this item as its own root pool"
-                  value={ownRootPool}
-                  onChange={setOwnRootPool}
-                  hint="Creates a prepared-base pool named after this item (e.g. Mutton Chukka)."
-                />
-
-                <div className="space-y-1.5">
-                  <Label className="text-sm">Connected pools</Label>
-                  {recipes.length === 0 && !ownRootPool && (
-                    <p className="text-xs text-muted-foreground">
-                      Counted items need at least one pool. Toggle the option above or add a pool below.
-                    </p>
-                  )}
-                  {recipes.map((r, idx) => {
-                    const pool = pools.find((p) => p.id === r.stock_pool_id);
-                    return (
-                      <div key={idx} className="flex items-center gap-2">
-                        <div className="flex-1 px-3 py-2 rounded-lg border border-border bg-accent/50 text-sm">
-                          <div className="font-medium">{pool?.name ?? "—"}</div>
-                          <div className="text-xs text-muted-foreground">{pool?.type}</div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={r.consume_ratio}
-                            onChange={(e) =>
-                              updateRecipe(idx, parseFloat(e.target.value) || 0)
-                            }
-                            className="w-24 h-9"
-                          />
-                          <span className="text-xs text-muted-foreground">/ unit</span>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeRecipe(idx)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Add an existing pool</Label>
-                  <Select
-                    value=""
-                    onValueChange={(v) => v && addRecipeRow(v)}
-                    disabled={availablePoolsForPicker.length === 0}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={
-                        availablePoolsForPicker.length === 0 ? "No more pools" : "Pick a pool…"
-                      } />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availablePoolsForPicker.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name} <span className="text-muted-foreground">({p.type})</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2 border-t border-border pt-3">
-                  <Label className="text-sm">Or create a new pool</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="e.g. Raw Egg"
-                      value={newPoolName}
-                      onChange={(e) => setNewPoolName(e.target.value)}
-                      className="flex-1"
-                    />
-                    <Select value={newPoolType} onValueChange={(v) => setNewPoolType(v as "prepared_base" | "raw_ingredient")}>
-                      <SelectTrigger className="w-40">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="raw_ingredient">raw_ingredient</SelectItem>
-                        <SelectItem value="prepared_base">prepared_base</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button type="button" onClick={createPool} disabled={!newPoolName.trim()}>
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <p className="text-xs text-muted-foreground">Notifies admins when portions fall to this number. Leave blank for no alert.</p>
                 </div>
               </div>
             )}
