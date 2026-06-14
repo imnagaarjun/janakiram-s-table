@@ -260,12 +260,12 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
   );
 
   const shownItems = useMemo(() => {
+    const hasPrice = (i: MenuItem) => prices.has(i.id);
     if (activeCat === ALL_KEY) {
-      // All active items, ordered by category sequence then display order
       const catIndex = new Map<string, number>();
       categories.forEach((c, idx) => catIndex.set(c.id, idx));
       return items
-        .filter((i) => i.is_active)
+        .filter((i) => i.is_active && hasPrice(i))
         .slice()
         .sort((a, b) => {
           const ai = a.category_id ? catIndex.get(a.category_id) ?? 999 : 999;
@@ -274,8 +274,8 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
           return (a.display_order ?? 0) - (b.display_order ?? 0);
         });
     }
-    return items.filter((i) => i.is_active && i.category_id === activeCat);
-  }, [activeCat, items, categories]);
+    return items.filter((i) => i.is_active && i.category_id === activeCat && hasPrice(i));
+  }, [activeCat, items, categories, prices]);
 
   const draftCount = draft.reduce((s, d) => s + d.qty, 0);
 

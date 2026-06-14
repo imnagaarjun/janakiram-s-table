@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const AppRoleEnum = z.enum(["admin", "manager", "cashier", "waiter", "kitchen"]);
+const AppRoleEnum = z.string().min(1);
 
 const CreateSchema = z.object({
   name: z.string().min(1),
@@ -27,6 +27,10 @@ const UpdateSchema = z.object({
 const ToggleSchema = z.object({
   userId: z.string().uuid(),
   isActive: z.boolean(),
+});
+
+const DeleteSchema = z.object({
+  userId: z.string().uuid(),
 });
 
 export const createStaffUser = createServerFn({ method: "POST" })
@@ -151,4 +155,15 @@ export const toggleUserActive = createServerFn({ method: "POST" })
       .eq("id", data.userId);
     if (error) throw new Error(error.message);
     return { updated: true };
+  });
+
+export const deleteStaffUser = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => DeleteSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);
+    await supabaseAdmin.from("profiles").delete().eq("id", data.userId);
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
+    if (error) throw new Error(error.message);
+    return { deleted: true };
   });

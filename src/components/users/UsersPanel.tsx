@@ -1,20 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, UserPlus, Pencil, Check, X, Power, Upload } from "lucide-react";
+import { Loader2, UserPlus, Pencil, Check, X, Power, Upload, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
 import { uploadMenuImage } from "@/lib/menu-storage";
 import { MenuImage } from "@/components/menu/MenuImage";
-import { createStaffUser, updateStaffUser, toggleUserActive } from "@/lib/user-management.functions";
+import { createStaffUser, updateStaffUser, toggleUserActive, deleteStaffUser } from "@/lib/user-management.functions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import type { AppRole } from "@/lib/types";
 
-const ROLES: AppRole[] = ["admin", "manager", "cashier", "waiter", "kitchen"];
+const DEFAULT_ROLES: string[] = ["admin", "manager", "cashier", "waiter", "kitchen"];
 
 interface StaffRow {
   id: string;
@@ -26,12 +35,12 @@ interface StaffRow {
   can_edit_payment: boolean;
   photo_url: string | null;
   notify_stock: boolean;
-  role: AppRole;
+  role: string;
 }
 
 interface FormState {
   name: string;
-  role: AppRole;
+  role: string;
   pin: string;
   contactEmail: string;
   canEditPayment?: boolean;
@@ -97,9 +106,14 @@ export function UsersPanel() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<FormState>>({});
 
+  const [deleteTarget, setDeleteTarget] = useState<StaffRow | null>(null);
+  const [roles, setRoles] = useState<string[]>(DEFAULT_ROLES);
+  const [newRole, setNewRole] = useState("");
+
   const callCreate = useServerFn(createStaffUser);
   const callUpdate = useServerFn(updateStaffUser);
   const callToggle = useServerFn(toggleUserActive);
+  const callDelete = useServerFn(deleteStaffUser);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -108,13 +122,17 @@ export function UsersPanel() {
       .select("id,name,auth_email,contact_email,is_active,last_active_at,can_edit_payment,photo_url,notify_stock")
       .eq("restaurant_id", profile.restaurant_id)
       .order("name");
-    const { data: roles } = await db
+    const { data: rolesData } = await db
       .from("user_roles")
       .select("user_id,role")
       .eq("restaurant_id", profile.restaurant_id);
 
-    const roleMap = new Map<string, AppRole>();
-    (roles ?? []).forEach((r: { user_id: string; role: AppRole }) => roleMap.set(r.user_id, r.role));
+    const roleMap = new Map<string, string>();
+    (rolesData ?? []).forEach((r: { user_id: string; role: string }) => roleMap.set(r.user_id, r.role));
+
+    // Build a comprehensive roles list from DB enum values + any in-use roles
+    const usedRoles = new Set(roleMap.values());
+    setRoles(Array.from(new Set([...DEFAULT_ROLES, ...usedRoles])));
 
     setStaff(
       ((profiles ?? []) as Omit<StaffRow, "role">[]).map((p) => ({
@@ -193,6 +211,26 @@ export function UsersPanel() {
     }
   }
 
+  async function removeUser(userId: string) {
+    try {
+      await callDelete({ data: { userId } });
+      toast.success("User deleted");
+      setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete");
+    }
+  }
+
+  function addCustomRole() {
+    const r = newRole.trim().toLowerCase();
+    if (!r) return;
+    if (roles.includes(r)) { toast.error("Role already exists"); return; }
+    setRoles((prev) => [...prev, r]);
+    setNewRole("");
+    toast.success(`Role "${r}" added`);
+  }
+
   function fmtDate(s: string | null) {
     if (!s) return "Never";
     return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -224,10 +262,10 @@ export function UsersPanel() {
             </div>
             <div>
               <Label className="block mb-1.5">Role</Label>
-              <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v as AppRole }))}>
+              <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v as string }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ROLES.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
+                  {roles.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -295,10 +333,10 @@ export function UsersPanel() {
                     </div>
                     <div>
                       <Label className="block mb-1 text-xs">Role</Label>
-                      <Select value={editForm.role ?? s.role} onValueChange={(v) => setEditForm((f) => ({ ...f, role: v as AppRole }))}>
+                      <Select value={editForm.role ?? s.role} onValueChange={(v) => setEditForm((f) => ({ ...f, role: v as string }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {ROLES.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
+                          {roles.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -382,6 +420,15 @@ export function UsersPanel() {
                     >
                       <Power className="h-4 w-4" />
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-danger"
+                      onClick={() => setDeleteTarget(s)}
+                      title="Delete user"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               )}
@@ -389,6 +436,45 @@ export function UsersPanel() {
           );
         })}
       </div>
+
+      {/* Add custom role */}
+      <div className="mt-6 rounded-2xl border border-border bg-surface p-4">
+        <h2 className="font-semibold text-sm mb-2">Custom roles</h2>
+        <p className="text-xs text-muted-foreground mb-3">Add roles beyond the defaults. Custom roles have the same access as "waiter" by default.</p>
+        <div className="flex gap-2">
+          <Input
+            placeholder="e.g. supervisor"
+            value={newRole}
+            onChange={(e) => setNewRole(e.target.value.toLowerCase().replace(/[^a-z_]/g, ""))}
+            className="max-w-[200px]"
+          />
+          <Button variant="outline" onClick={addCustomRole} disabled={!newRole.trim()}>
+            <Plus className="h-4 w-4 mr-1" /> Add role
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {roles.map((r) => (
+            <span key={r} className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary capitalize">{r}</span>
+          ))}
+        </div>
+      </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes their account, login, and all associated data. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteTarget && removeUser(deleteTarget.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

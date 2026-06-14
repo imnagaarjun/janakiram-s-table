@@ -91,6 +91,13 @@ export function ItemEditor({
     }
     return map;
   });
+  const [disabledChannels, setDisabledChannels] = useState<Set<string>>(() => {
+    const s = new Set<string>();
+    for (const ch of channels) {
+      if (!existingPrices.find((p) => p.channel_key === ch.key)) s.add(ch.key);
+    }
+    return s;
+  });
   const [pools, setPools] = useState<StockPool[]>([]);
   const [recipes, setRecipes] = useState<RecipeRow[]>([]);
   const [ownRootPool, setOwnRootPool] = useState(false);
@@ -424,15 +431,34 @@ export function ItemEditor({
             <div className="space-y-3">
               {channels.map((ch) => {
                 const split = priceSplits[ch.key];
+                const off = disabledChannels.has(ch.key);
                 return (
-                  <div key={ch.key} className="space-y-1">
-                    <Label className="text-sm">{ch.label}</Label>
+                  <div key={ch.key} className={`space-y-1 ${off ? "opacity-50" : ""}`}>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">{ch.label}</Label>
+                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-muted-foreground">
+                        <Switch
+                          checked={!off}
+                          onCheckedChange={(v) => {
+                            setDisabledChannels((s) => {
+                              const next = new Set(s);
+                              if (v) next.delete(ch.key);
+                              else { next.add(ch.key); setPriceMap((m) => ({ ...m, [ch.key]: "" })); }
+                              return next;
+                            });
+                          }}
+                          className="scale-75"
+                        />
+                        {off ? "Disabled" : "Enabled"}
+                      </label>
+                    </div>
                     <Input
                       type="number"
                       step="0.01"
                       inputMode="decimal"
                       placeholder="0.00"
-                      value={priceMap[ch.key] ?? ""}
+                      disabled={off}
+                      value={off ? "" : (priceMap[ch.key] ?? "")}
                       onChange={(e) =>
                         setPriceMap((m) => ({ ...m, [ch.key]: e.target.value }))
                       }
