@@ -17,6 +17,7 @@ const UpdateSchema = z.object({
   role: AppRoleEnum.optional(),
   pin: z.string().regex(/^\d{4,8}$/).optional(),
   contactEmail: z.string().email().nullable().optional(),
+  canEditPayment: z.boolean().optional(),
 });
 
 const ToggleSchema = z.object({
@@ -71,10 +72,11 @@ export const updateStaffUser = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    if (data.name !== undefined || data.contactEmail !== undefined) {
+    if (data.name !== undefined || data.contactEmail !== undefined || data.canEditPayment !== undefined) {
       const updates: Record<string, unknown> = {};
       if (data.name !== undefined) updates.name = data.name;
       if (data.contactEmail !== undefined) updates.contact_email = data.contactEmail;
+      if (data.canEditPayment !== undefined) updates.can_edit_payment = data.canEditPayment;
       const { error } = await supabaseAdmin.from("profiles").update(updates).eq("id", data.userId);
       if (error) throw new Error(error.message);
     }

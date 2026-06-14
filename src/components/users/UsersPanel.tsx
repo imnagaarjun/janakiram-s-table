@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import type { AppRole } from "@/lib/types";
 
 const ROLES: AppRole[] = ["admin", "manager", "cashier", "waiter", "kitchen"];
@@ -20,6 +21,7 @@ interface StaffRow {
   contact_email: string | null;
   is_active: boolean;
   last_active_at: string | null;
+  can_edit_payment: boolean;
   role: AppRole;
 }
 
@@ -28,6 +30,7 @@ interface FormState {
   role: AppRole;
   pin: string;
   contactEmail: string;
+  canEditPayment?: boolean;
 }
 
 const BLANK: FormState = { name: "", role: "waiter", pin: "", contactEmail: "" };
@@ -50,7 +53,7 @@ export function UsersPanel() {
     if (!profile) return;
     const { data: profiles } = await db
       .from("profiles")
-      .select("id,name,auth_email,contact_email,is_active,last_active_at")
+      .select("id,name,auth_email,contact_email,is_active,last_active_at,can_edit_payment")
       .eq("restaurant_id", profile.restaurant_id)
       .order("name");
     const { data: roles } = await db
@@ -110,6 +113,7 @@ export function UsersPanel() {
           role: editForm.role,
           pin: editForm.pin || undefined,
           contactEmail: editForm.contactEmail ?? undefined,
+          canEditPayment: editForm.canEditPayment,
         },
       });
       toast.success("Updated");
@@ -242,6 +246,16 @@ export function UsersPanel() {
                         placeholder="Email for OTP"
                       />
                     </div>
+                    <div className="sm:col-span-2 flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                      <div>
+                        <Label className="text-xs">Can change payment mode</Label>
+                        <p className="text-[11px] text-muted-foreground">Lets this user change a settled bill's payment once (cashiers can always do this).</p>
+                      </div>
+                      <Switch
+                        checked={editForm.canEditPayment ?? s.can_edit_payment}
+                        onCheckedChange={(v) => setEditForm((f) => ({ ...f, canEditPayment: v }))}
+                      />
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => saveEdit(s.id)} disabled={saving} className="min-h-[40px]">
@@ -266,7 +280,7 @@ export function UsersPanel() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => { setEditId(s.id); setEditForm({ name: s.name, role: s.role, contactEmail: s.contact_email ?? "" }); }}>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => { setEditId(s.id); setEditForm({ name: s.name, role: s.role, contactEmail: s.contact_email ?? "", canEditPayment: s.can_edit_payment }); }}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button

@@ -16,6 +16,7 @@ import {
   DailyPurchaseReport, VendorDuesReport, CashReconArchive,
   OwnersDrawingsReport, DailyPnLReport,
 } from "./ProcurementReports";
+import { BillRecords } from "./BillRecords";
 
 // ---- Data shapes (loose) ----
 interface Invoice {
@@ -25,6 +26,7 @@ interface Invoice {
   complimentary: boolean; discount_reason: string | null;
   issued_at: string; voided_at: string | null; void_reason: string | null;
   issued_by: string | null; business_date: string;
+  bill_out?: boolean;
 }
 interface Payment { id: string; invoice_id: string; mode: string; amount: number; ref_no: string | null; created_at: string }
 interface Session { id: string; table_code: string | null; channel: string; pax: number; opened_at: string; closed_at: string | null; status: string; opened_by: string | null }
@@ -160,6 +162,7 @@ export function ReportsHub() {
     { value: "cats", label: "Category", render: () => <CategorySales {...{ data, range, itemMap, catMap, sessionMap, priceFor }} /> },
     { value: "hourly", label: "Hourly", render: () => <HourlyPeaks {...{ data, range }} /> },
     { value: "bills", label: "Bill Register", render: () => <BillRegister {...{ data, range, sessionMap, profileMap }} /> },
+    { value: "records", label: "Bill Records", render: () => <BillRecords /> },
     { value: "pay", label: "Payments", render: () => <PaymentSplit {...{ data, range }} /> },
     { value: "avg", label: "Avg Bill & Turnover", render: () => <AvgTurnover {...{ data, range, sessionMap }} /> },
     { value: "kots", label: "KOT Register", render: () => <KotRegister {...{ data, range, sessionMap, profileMap }} /> },
@@ -182,7 +185,7 @@ export function ReportsHub() {
   let tabs: TabDef[];
   if (isAdmin) tabs = allTabs;
   else if (isManager) tabs = allTabs.filter((t) => t.value !== "audit");
-  else if (isCashier) tabs = allTabs.filter((t) => ["daily", "bills", "pay", "z"].includes(t.value));
+  else if (isCashier) tabs = allTabs.filter((t) => ["daily", "bills", "records", "pay", "z"].includes(t.value));
   else if (isWaiter) {
     tabs = [{
       value: "mine", label: "My Sales",
@@ -468,6 +471,7 @@ function BillRegister({ data, range, sessionMap, profileMap }: { data: Dataset; 
         cashier: inv.issued_by ? profileMap.get(inv.issued_by) ?? "—" : "—",
         base: +inv.base, cgst: +inv.cgst, sgst: +inv.sgst, discount: +inv.discount, total: +inv.total,
         paid,
+        bill_out: inv.bill_out ? "Yes" : "No",
       };
     });
   const settled = rows.filter((r) => r.status === "settled");
@@ -486,6 +490,7 @@ function BillRegister({ data, range, sessionMap, profileMap }: { data: Dataset; 
         { key: "discount", label: "Disc", numeric: true, render: (v) => inr(Number(v)) },
         { key: "total", label: "Total", numeric: true, render: (v) => inr(Number(v)) },
         { key: "paid", label: "Paid", numeric: true, render: (v) => inr(Number(v)) },
+        { key: "bill_out", label: "Bill out" },
         { key: "status", label: "Status" },
       ]}
       rows={rows as unknown as Record<string, unknown>[]}
