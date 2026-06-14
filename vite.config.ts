@@ -4,12 +4,9 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
-// Always use the Vercel preset for builds; local `vite dev` is unaffected.
-const isProduction = process.env.NODE_ENV === "production";
-
 export default defineConfig({
   plugins: [
-    tanstackStart(isProduction ? { server: { preset: "vercel" } } : {}),
+    tanstackStart(),
     react(),
     tailwindcss(),
     tsconfigPaths(),
