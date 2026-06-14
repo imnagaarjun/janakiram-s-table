@@ -73,10 +73,16 @@ export const config = { api: { bodyParser: false } };
 `
 );
 
+// ESM package.json so Node.js treats .js files as ES modules
+writeFileSync(
+  join(funcDir, "package.json"),
+  JSON.stringify({ type: "module" }, null, 2)
+);
+
 // Function config: Node.js 22, ESM
 writeFileSync(
   join(funcDir, ".vc-config.json"),
-  JSON.stringify({ runtime: "nodejs22.x", handler: "index.js", launcherType: "Nodejs", shouldAddHelpers: false }, null, 2)
+  JSON.stringify({ runtime: "nodejs22.x", handler: "index.js", launcherType: "Nodejs", shouldAddHelpers: true }, null, 2)
 );
 
 // 3. Vercel routing config
