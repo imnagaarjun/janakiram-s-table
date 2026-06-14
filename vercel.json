@@ -1,17 +1,5 @@
 {
   "framework": null,
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "outputDirectory": "dist/client",
-  "functions": {
-    "api/index.js": {
-      "runtime": "@vercel/node@4",
-      "memory": 512,
-      "maxDuration": 30
-    }
-  },
-  "rewrites": [
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/(.*)", "destination": "/api/index" }
-  ]
+  "buildCommand": "npm run build && node build-vercel.mjs",
+  "installCommand": "npm install"
 }
