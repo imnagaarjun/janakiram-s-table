@@ -9,12 +9,17 @@
  *   functions/
  *     index.func/
  *       .vc-config.json               <- marks this as a Node.js function
- *       index.js                      <- the SSR handler
- *       (all files from dist/server/) <- bundled alongside
+ *       package.json                  <- {"type":"module"} so .js is ESM
+ *       index.js                      <- thin req/res -> fetch adapter
+ *       server.mjs                    <- esbuild bundle of dist/server/server.js
+ *                                        WITH all node_modules inlined, so the
+ *                                        function is fully self-contained (Vercel
+ *                                        functions do not ship node_modules).
  */
 
 import { cpSync, mkdirSync, writeFileSync, readdirSync } from "fs";
 import { join } from "path";
+import * as esbuild from "esbuild";
 
 const root = process.cwd();
 const out = join(root, ".vercel", "output");
@@ -24,9 +29,8 @@ const staticDir = join(out, "static");
 mkdirSync(staticDir, { recursive: true });
 cpSync(join(root, "dist", "client", "assets"), join(staticDir, "assets"), { recursive: true });
 
-// Also copy manifest
-const clientFiles = readdirSync(join(root, "dist", "client"));
-for (const f of clientFiles) {
+// Copy any other top-level client files (manifest, etc.)
+for (const f of readdirSync(join(root, "dist", "client"))) {
   if (f !== "assets") {
     cpSync(join(root, "dist", "client", f), join(staticDir, f), { recursive: true });
   }
@@ -36,13 +40,25 @@ for (const f of clientFiles) {
 const funcDir = join(out, "functions", "index.func");
 mkdirSync(funcDir, { recursive: true });
 
-// Copy the entire dist/server/ tree into the function directory
-cpSync(join(root, "dist", "server"), join(funcDir, "dist", "server"), { recursive: true });
+// Bundle the SSR server + ALL dependencies into a single self-contained file.
+await esbuild.build({
+  entryPoints: [join(root, "dist", "server", "server.js")],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  outfile: join(funcDir, "server.mjs"),
+  // Provide a CommonJS require shim for any deps that need it under ESM.
+  banner: {
+    js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
+  },
+  logLevel: "error",
+});
 
-// Write the function entry point
+// Thin adapter: Vercel Node (req,res) -> Web Fetch (Request/Response)
 writeFileSync(
   join(funcDir, "index.js"),
-  `import server from "./dist/server/server.js";
+  `import server from "./server.mjs";
 
 export default async function handler(req, res) {
   const proto = req.headers["x-forwarded-proto"] || "https";
@@ -68,21 +84,20 @@ export default async function handler(req, res) {
   const body = await response.arrayBuffer();
   res.end(Buffer.from(body));
 }
-
-export const config = { api: { bodyParser: false } };
 `
 );
 
-// ESM package.json so Node.js treats .js files as ES modules
-writeFileSync(
-  join(funcDir, "package.json"),
-  JSON.stringify({ type: "module" }, null, 2)
-);
+// ESM package.json so Node treats .js files as ES modules
+writeFileSync(join(funcDir, "package.json"), JSON.stringify({ type: "module" }, null, 2));
 
-// Function config: Node.js 22, ESM
+// Function config: Node.js 22
 writeFileSync(
   join(funcDir, ".vc-config.json"),
-  JSON.stringify({ runtime: "nodejs22.x", handler: "index.js", launcherType: "Nodejs", shouldAddHelpers: true }, null, 2)
+  JSON.stringify(
+    { runtime: "nodejs22.x", handler: "index.js", launcherType: "Nodejs", shouldAddHelpers: false },
+    null,
+    2
+  )
 );
 
 // 3. Vercel routing config
@@ -92,9 +107,7 @@ writeFileSync(
     {
       version: 3,
       routes: [
-        // Static assets served by CDN
         { src: "/assets/(.*)", dest: "/assets/$1" },
-        // Fallback: everything else → serverless function
         { src: "/(.*)", dest: "/index" },
       ],
     },
@@ -103,4 +116,4 @@ writeFileSync(
   )
 );
 
-console.log("✓ Vercel output assembled at .vercel/output/");
+console.log("✓ Vercel output assembled at .vercel/output/ (server bundled self-contained)");
