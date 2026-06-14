@@ -116,6 +116,7 @@ function SettingsInner() {
         fssai: rest.fssai,
         phone: rest.phone,
         business_day_close_time: rest.business_day_close_time,
+        bill_retention_until: rest.bill_retention_until || null,
       })
       .eq("id", rest.id);
     setSaving(false);
@@ -219,6 +220,16 @@ function SettingsInner() {
               value={(rest.business_day_close_time ?? "00:00:00").slice(0, 5)}
               onChange={(e) => update("business_day_close_time", e.target.value)}
             />
+          </Field>
+          <Field label="Keep bill records until">
+            <Input
+              type="date"
+              value={rest.bill_retention_until ?? ""}
+              onChange={(e) => update("bill_retention_until", e.target.value || null)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Bill records browser won't go earlier than this date. Leave blank to keep everything.
+            </p>
           </Field>
         </div>
 

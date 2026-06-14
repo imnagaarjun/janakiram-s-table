@@ -17,6 +17,7 @@ import { computeBill, type BillLine } from "@/lib/billing";
 import { inr } from "@/lib/gst";
 import { printBill } from "@/lib/print-bill";
 import { SettlementDialog } from "./SettlementDialog";
+import { SettledBillControls } from "./SettledBillControls";
 
 type Session = {
   id: string;
@@ -52,6 +53,8 @@ type Invoice = {
   round_off: number;
   total: number;
   complimentary: boolean;
+  bill_out?: boolean;
+  payment_edits?: number;
 };
 type Payment = { mode: string; amount: number; ref_no: string | null };
 
@@ -109,10 +112,16 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
+    // Scope the restaurant lookup to the signed-in user's restaurant. Using a
+    // bare .limit(1) could pick the wrong row (blank header) if more than one
+    // restaurant row is visible.
+    const restQuery = profile?.restaurant_id
+      ? db.from("restaurants").select("*").eq("id", profile.restaurant_id).maybeSingle()
+      : db.from("restaurants").select("*").limit(1).maybeSingle();
     const [sRes, kRes, restRes, invRes] = await Promise.all([
       db.from("order_sessions").select("id,table_code,channel,pax,status").eq("id", sessionId).maybeSingle(),
       db.from("kots").select("id,session_id").eq("session_id", sessionId),
-      db.from("restaurants").select("*").limit(1).maybeSingle(),
+      restQuery,
       db.from("invoices").select("*").eq("session_id", sessionId).eq("status", "settled").order("issued_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     const s = sRes.data as Session | null;
@@ -170,7 +179,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       setExistingPayments([]);
     }
     setLoading(false);
-  }, [sessionId]);
+  }, [sessionId, profile?.restaurant_id]);
 
   useEffect(() => {
     load();
@@ -380,6 +389,14 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
               ))}
             </div>
           )}
+          <SettledBillControls
+            invoiceId={existingInvoice.id}
+            total={existingInvoice.total}
+            payments={existingPayments}
+            billOut={Boolean(existingInvoice.bill_out)}
+            paymentEdits={existingInvoice.payment_edits ?? 0}
+            onChanged={load}
+          />
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={reprint}>
               <Printer className="h-4 w-4 mr-1" /> Reprint
