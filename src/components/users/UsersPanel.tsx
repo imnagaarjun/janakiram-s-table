@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, UserPlus, Pencil, Check, X, Power } from "lucide-react";
+import { Loader2, UserPlus, Pencil, Check, X, Power, Upload, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
-import { createStaffUser, updateStaffUser, toggleUserActive } from "@/lib/user-management.functions";
+import { uploadMenuImage } from "@/lib/menu-storage";
+import { MenuImage } from "@/components/menu/MenuImage";
+import { createStaffUser, updateStaffUser, toggleUserActive, deleteStaffUser } from "@/lib/user-management.functions";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import type { AppRole } from "@/lib/types";
 
-const ROLES: AppRole[] = ["admin", "manager", "cashier", "waiter", "kitchen"];
+const DEFAULT_ROLES: string[] = ["admin", "manager", "cashier", "waiter", "kitchen"];
 
 interface StaffRow {
   id: string;
@@ -22,18 +33,68 @@ interface StaffRow {
   is_active: boolean;
   last_active_at: string | null;
   can_edit_payment: boolean;
-  role: AppRole;
+  photo_url: string | null;
+  notify_stock: boolean;
+  role: string;
 }
 
 interface FormState {
   name: string;
-  role: AppRole;
+  role: string;
   pin: string;
   contactEmail: string;
   canEditPayment?: boolean;
+  photoUrl?: string | null;
+  notifyStock?: boolean;
 }
 
 const BLANK: FormState = { name: "", role: "waiter", pin: "", contactEmail: "" };
+
+/** Square portrait uploader (reuses the menu storage bucket, "staff" scope). */
+function PhotoPicker({
+  restaurantId,
+  value,
+  onChange,
+}: {
+  restaurantId: string;
+  value: string | null | undefined;
+  onChange: (path: string | null) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setUploading(true);
+    try {
+      const path = await uploadMenuImage(restaurantId, "staff", crypto.randomUUID(), f);
+      onChange(path);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+  return (
+    <div className="flex items-center gap-3">
+      <div className="h-16 w-16 rounded-full border border-border overflow-hidden shrink-0">
+        <MenuImage path={value} alt="Portrait" className="h-full w-full" />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-surface hover:bg-accent cursor-pointer text-sm font-medium">
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+          <span>{uploading ? "Uploading…" : value ? "Replace photo" : "Add photo"}</span>
+          <input type="file" accept="image/*" capture="user" className="hidden" onChange={onPick} disabled={uploading} />
+        </label>
+        {value && (
+          <Button variant="ghost" size="sm" onClick={() => onChange(null)} className="self-start text-muted-foreground h-7">
+            <X className="h-3.5 w-3.5 mr-1" /> Remove
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function UsersPanel() {
   const { profile } = useAuth();
@@ -45,24 +106,33 @@ export function UsersPanel() {
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<FormState>>({});
 
+  const [deleteTarget, setDeleteTarget] = useState<StaffRow | null>(null);
+  const [roles, setRoles] = useState<string[]>(DEFAULT_ROLES);
+  const [newRole, setNewRole] = useState("");
+
   const callCreate = useServerFn(createStaffUser);
   const callUpdate = useServerFn(updateStaffUser);
   const callToggle = useServerFn(toggleUserActive);
+  const callDelete = useServerFn(deleteStaffUser);
 
   const load = useCallback(async () => {
     if (!profile) return;
     const { data: profiles } = await db
       .from("profiles")
-      .select("id,name,auth_email,contact_email,is_active,last_active_at,can_edit_payment")
+      .select("id,name,auth_email,contact_email,is_active,last_active_at,can_edit_payment,photo_url,notify_stock")
       .eq("restaurant_id", profile.restaurant_id)
       .order("name");
-    const { data: roles } = await db
+    const { data: rolesData } = await db
       .from("user_roles")
       .select("user_id,role")
       .eq("restaurant_id", profile.restaurant_id);
 
-    const roleMap = new Map<string, AppRole>();
-    (roles ?? []).forEach((r: { user_id: string; role: AppRole }) => roleMap.set(r.user_id, r.role));
+    const roleMap = new Map<string, string>();
+    (rolesData ?? []).forEach((r: { user_id: string; role: string }) => roleMap.set(r.user_id, r.role));
+
+    // Build a comprehensive roles list from DB enum values + any in-use roles
+    const usedRoles = new Set(roleMap.values());
+    setRoles(Array.from(new Set([...DEFAULT_ROLES, ...usedRoles])));
 
     setStaff(
       ((profiles ?? []) as Omit<StaffRow, "role">[]).map((p) => ({
@@ -83,16 +153,18 @@ export function UsersPanel() {
     if (form.role === "admin" && !form.contactEmail) { toast.error("Admin requires a contact email for OTP verification"); return; }
     setSaving(true);
     try {
-      await callCreate({
+      const res = await callCreate({
         data: {
           name: form.name,
           role: form.role,
           pin: form.pin,
           contactEmail: form.contactEmail || undefined,
+          photoUrl: form.photoUrl ?? null,
+          notifyStock: form.notifyStock ?? false,
           restaurantId: profile.restaurant_id,
         },
       });
-      toast.success("User created");
+      toast.success(`${res.name} added as ${res.role}`);
       setShowAdd(false);
       setForm(BLANK);
       await load();
@@ -114,6 +186,8 @@ export function UsersPanel() {
           pin: editForm.pin || undefined,
           contactEmail: editForm.contactEmail ?? undefined,
           canEditPayment: editForm.canEditPayment,
+          photoUrl: editForm.photoUrl,
+          notifyStock: editForm.notifyStock,
         },
       });
       toast.success("Updated");
@@ -137,6 +211,26 @@ export function UsersPanel() {
     }
   }
 
+  async function removeUser(userId: string) {
+    try {
+      await callDelete({ data: { userId } });
+      toast.success("User deleted");
+      setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete");
+    }
+  }
+
+  function addCustomRole() {
+    const r = newRole.trim().toLowerCase();
+    if (!r) return;
+    if (roles.includes(r)) { toast.error("Role already exists"); return; }
+    setRoles((prev) => [...prev, r]);
+    setNewRole("");
+    toast.success(`Role "${r}" added`);
+  }
+
   function fmtDate(s: string | null) {
     if (!s) return "Never";
     return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -156,6 +250,11 @@ export function UsersPanel() {
       {showAdd && (
         <div className="rounded-2xl border border-border bg-surface p-4 mb-6 space-y-4">
           <h2 className="font-semibold text-base">New Staff User</h2>
+          <PhotoPicker
+            restaurantId={profile!.restaurant_id}
+            value={form.photoUrl}
+            onChange={(p) => setForm((f) => ({ ...f, photoUrl: p }))}
+          />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label className="block mb-1.5">Name</Label>
@@ -163,10 +262,10 @@ export function UsersPanel() {
             </div>
             <div>
               <Label className="block mb-1.5">Role</Label>
-              <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v as AppRole }))}>
+              <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v as string }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ROLES.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
+                  {roles.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -195,6 +294,16 @@ export function UsersPanel() {
               />
             </div>
           </div>
+          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+            <div>
+              <Label className="text-xs">Receive stock alerts</Label>
+              <p className="text-[11px] text-muted-foreground">Gets low-stock and out-of-stock notifications (admins always do).</p>
+            </div>
+            <Switch
+              checked={form.notifyStock ?? false}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, notifyStock: v }))}
+            />
+          </div>
           <div className="flex gap-2">
             <Button onClick={addUser} disabled={saving} className="min-h-[44px]">
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
@@ -212,6 +321,11 @@ export function UsersPanel() {
             <div key={s.id} className={`rounded-2xl border border-border bg-surface p-4 ${!s.is_active ? "opacity-60" : ""}`}>
               {isEditing ? (
                 <div className="space-y-3">
+                  <PhotoPicker
+                    restaurantId={profile!.restaurant_id}
+                    value={editForm.photoUrl ?? s.photo_url}
+                    onChange={(p) => setEditForm((f) => ({ ...f, photoUrl: p }))}
+                  />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label className="block mb-1 text-xs">Name</Label>
@@ -219,10 +333,10 @@ export function UsersPanel() {
                     </div>
                     <div>
                       <Label className="block mb-1 text-xs">Role</Label>
-                      <Select value={editForm.role ?? s.role} onValueChange={(v) => setEditForm((f) => ({ ...f, role: v as AppRole }))}>
+                      <Select value={editForm.role ?? s.role} onValueChange={(v) => setEditForm((f) => ({ ...f, role: v as string }))}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {ROLES.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
+                          {roles.map((r) => <SelectItem key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -256,6 +370,16 @@ export function UsersPanel() {
                         onCheckedChange={(v) => setEditForm((f) => ({ ...f, canEditPayment: v }))}
                       />
                     </div>
+                    <div className="sm:col-span-2 flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                      <div>
+                        <Label className="text-xs">Receive stock alerts</Label>
+                        <p className="text-[11px] text-muted-foreground">Gets low-stock and out-of-stock notifications.</p>
+                      </div>
+                      <Switch
+                        checked={editForm.notifyStock ?? s.notify_stock}
+                        onCheckedChange={(v) => setEditForm((f) => ({ ...f, notifyStock: v }))}
+                      />
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => saveEdit(s.id)} disabled={saving} className="min-h-[40px]">
@@ -269,10 +393,14 @@ export function UsersPanel() {
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
+                  <div className="h-11 w-11 rounded-full border border-border overflow-hidden shrink-0">
+                    <MenuImage path={s.photo_url} alt={s.name} className="h-full w-full" />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold">{s.name}</span>
                       <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium capitalize">{s.role}</span>
+                      {s.notify_stock && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600">stock alerts</span>}
                       {!s.is_active && <span className="text-xs text-muted-foreground">(inactive)</span>}
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
@@ -280,7 +408,7 @@ export function UsersPanel() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => { setEditId(s.id); setEditForm({ name: s.name, role: s.role, contactEmail: s.contact_email ?? "", canEditPayment: s.can_edit_payment }); }}>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => { setEditId(s.id); setEditForm({ name: s.name, role: s.role, contactEmail: s.contact_email ?? "", canEditPayment: s.can_edit_payment, photoUrl: s.photo_url, notifyStock: s.notify_stock }); }}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
@@ -292,6 +420,15 @@ export function UsersPanel() {
                     >
                       <Power className="h-4 w-4" />
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-danger"
+                      onClick={() => setDeleteTarget(s)}
+                      title="Delete user"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               )}
@@ -299,6 +436,45 @@ export function UsersPanel() {
           );
         })}
       </div>
+
+      {/* Add custom role */}
+      <div className="mt-6 rounded-2xl border border-border bg-surface p-4">
+        <h2 className="font-semibold text-sm mb-2">Custom roles</h2>
+        <p className="text-xs text-muted-foreground mb-3">Add roles beyond the defaults. Custom roles have the same access as "waiter" by default.</p>
+        <div className="flex gap-2">
+          <Input
+            placeholder="e.g. supervisor"
+            value={newRole}
+            onChange={(e) => setNewRole(e.target.value.toLowerCase().replace(/[^a-z_]/g, ""))}
+            className="max-w-[200px]"
+          />
+          <Button variant="outline" onClick={addCustomRole} disabled={!newRole.trim()}>
+            <Plus className="h-4 w-4 mr-1" /> Add role
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {roles.map((r) => (
+            <span key={r} className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary capitalize">{r}</span>
+          ))}
+        </div>
+      </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes their account, login, and all associated data. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteTarget && removeUser(deleteTarget.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -15,7 +15,7 @@ export async function getMenuImageUrl(path: string | null | undefined): Promise<
 
 export async function uploadMenuImage(
   restaurantId: string,
-  scope: "category" | "item",
+  scope: "category" | "item" | "staff",
   id: string,
   file: File,
 ): Promise<string> {
