@@ -79,6 +79,9 @@ export function ItemEditor({
   const [stockMode, setStockMode] = useState<"counted" | "unlimited">(
     existing?.stock_mode ?? "unlimited",
   );
+  const [benchmark, setBenchmark] = useState<string>(
+    existing?.stock_benchmark != null ? String(existing.stock_benchmark) : "",
+  );
   const [gstRate, setGstRate] = useState<number>(existing?.gst_rate ?? DEFAULT_GST);
   const [priceMap, setPriceMap] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
@@ -212,6 +215,10 @@ export function ItemEditor({
         is_active: isActive,
         is_86: is86,
         stock_mode: stockMode,
+        stock_benchmark:
+          stockMode === "counted" && benchmark.trim() !== ""
+            ? Math.max(0, parseInt(benchmark, 10) || 0)
+            : null,
         gst_rate: gstRate,
       };
 
@@ -470,6 +477,21 @@ export function ItemEditor({
 
             {stockMode === "counted" && (
               <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-sm">Low-stock alert benchmark <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    placeholder="e.g. 5 — alert when available qty drops to this"
+                    value={benchmark}
+                    onChange={(e) => setBenchmark(e.target.value.replace(/\D/g, ""))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Notifies admins & assigned staff when availability falls to this number (yellow), and again at zero (red). Leave blank for no low-stock alert.
+                  </p>
+                </div>
+
                 <Toggle
                   label="Use this item as its own root pool"
                   value={ownRootPool}

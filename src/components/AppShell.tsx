@@ -5,6 +5,7 @@ import { useDeviceMode } from "@/hooks/use-device-mode";
 import { useAuth } from "@/contexts/AuthContext";
 import { StatusPill } from "@/components/StatusPill";
 import { WaiterNotifier } from "@/components/WaiterNotifier";
+import { StockNotifier } from "@/components/StockNotifier";
 import { db } from "@/lib/db";
 import type { AppRole } from "@/lib/types";
 
@@ -89,6 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <ModuleContext.Provider value={{ enabled }}>
         <div className="min-h-screen flex flex-col bg-background">
           <WaiterNotifier />
+          <StockNotifier />
           <div className="h-9 shrink-0 border-b bg-surface flex items-center justify-end px-3">
             <StatusPill fixed={false} />
           </div>

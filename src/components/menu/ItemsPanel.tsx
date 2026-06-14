@@ -23,6 +23,7 @@ export interface MenuItem {
   is_active: boolean;
   is_86: boolean;
   stock_mode: "counted" | "unlimited";
+  stock_benchmark: number | null;
   gst_rate: number;
   display_order: number;
 }

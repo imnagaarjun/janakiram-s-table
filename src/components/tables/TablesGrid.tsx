@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Settings2, Plus, Trash2, ShoppingBag, ReceiptText } from "lucide-react";
+import { Loader2, Settings2, Plus, Trash2, ShoppingBag, ReceiptText, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,6 +35,7 @@ import {
   type TableStatus,
 } from "@/lib/tables";
 import { ViewBillDialog } from "./ViewBillDialog";
+import { AvailabilityDialog } from "./AvailabilityDialog";
 
 interface Waiter {
   id: string;
@@ -76,6 +77,7 @@ export function TablesGrid() {
   const [waiterFilter, setWaiterFilter] = useState<string>("all");
   const [manageOpen, setManageOpen] = useState(false);
   const [viewBillOpen, setViewBillOpen] = useState(false);
+  const [availOpen, setAvailOpen] = useState(false);
 
   // Start-order dialog state
   const [picker, setPicker] = useState<{ kind: "table"; code: string } | { kind: "takeaway" } | null>(null);
@@ -245,6 +247,9 @@ export function TablesGrid() {
           <Button variant="outline" size="sm" className="min-h-[44px]" onClick={() => setViewBillOpen(true)}>
             <ReceiptText className="h-4 w-4" /> View bill
           </Button>
+          <Button variant="outline" size="sm" className="min-h-[44px]" onClick={() => setAvailOpen(true)}>
+            <PackageCheck className="h-4 w-4" /> Available
+          </Button>
           {hasRole("admin", "manager") && (
             <Sheet open={manageOpen} onOpenChange={setManageOpen}>
               <SheetTrigger asChild>
@@ -271,6 +276,7 @@ export function TablesGrid() {
 
 
       <ViewBillDialog open={viewBillOpen} onOpenChange={setViewBillOpen} restaurantId={restaurantId ?? null} />
+      <AvailabilityDialog open={availOpen} onOpenChange={setAvailOpen} />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
