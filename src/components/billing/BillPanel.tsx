@@ -275,7 +275,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       setPreviewOpen(false);
       setConfirmation(r);
       toast.success(`Invoice ${r.invoice_no} settled`);
-      await load();
+      await load().catch(() => toast.error("Failed to refresh — please reload the page"));
     } catch (e) {
       const msg = (e as Error).message ?? "Settle failed";
       toast.error(humanError(msg));

@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Settings2, Plus, Trash2, ShoppingBag, ReceiptText, PackageCheck } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,6 +102,19 @@ export function TablesGrid() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Live table status updates — refreshes the grid when any session or table row changes.
+  useEffect(() => {
+    if (!restaurantId) return;
+    const ch = supabase
+      .channel("tables-grid-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "order_sessions",
+        filter: `restaurant_id=eq.${restaurantId}` }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "tables",
+        filter: `restaurant_id=eq.${restaurantId}` }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [restaurantId, load]);
 
   const tableByCode = useMemo(() => {
     const m = new Map<string, DiningTable>();
@@ -362,6 +376,7 @@ export function TablesGrid() {
                         type="button"
                         disabled={status === "inactive"}
                         onClick={() => openTile(code, status)}
+                        aria-label={`Table ${code}, ${STATUS_LABEL[status]}`}
                         className={`rounded-xl px-2 py-3 min-h-[64px] text-left border ${STATUS_CLASSES[status]} ${
                           status === "inactive"
                             ? "opacity-90 cursor-not-allowed"

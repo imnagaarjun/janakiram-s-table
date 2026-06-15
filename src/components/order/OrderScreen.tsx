@@ -188,18 +188,26 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     load();
   }, [load]);
 
+  // Debounce realtime callbacks so rapid events don't cause constant flicker.
+  const realtimeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedLoad = useCallback(() => {
+    if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+    realtimeTimer.current = setTimeout(() => load(), 400);
+  }, [load]);
+
   // Realtime: stock_ledger + kots/kot_items for this session
   useEffect(() => {
     const ch = supabase
       .channel("order-" + sessionId)
-      .on("postgres_changes", { event: "*", schema: "public", table: "stock_ledger" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "kot_items" }, () => load())
-      .on("postgres_changes", { event: "*", schema: "public", table: "kots" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock_ledger" }, () => debouncedLoad())
+      .on("postgres_changes", { event: "*", schema: "public", table: "kot_items" }, () => debouncedLoad())
+      .on("postgres_changes", { event: "*", schema: "public", table: "kots" }, () => debouncedLoad())
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
+      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
     };
-  }, [sessionId, load]);
+  }, [sessionId, debouncedLoad]);
 
   // Persist draft to sessionStorage on every change
   useEffect(() => {
@@ -368,7 +376,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     sendingRef.current = false;
     if (error) {
       toast.error(parseRpcError(error.message));
-      load();
+      load().catch(() => toast.error("Failed to refresh — please reload the page"));
       return;
     }
     const kotNo = (data as { kot_no: number }).kot_no;
@@ -387,7 +395,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
 
     clearDraft();
     setCartOpen(false);
-    load();
+    load().catch(() => toast.error("Failed to refresh — please reload the page"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, kotNote, sessionId, restaurant, session, load, waiterName, clearDraft]);
 
@@ -632,6 +640,8 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
                   key={it.id}
                   onClick={() => setPopup(it)}
                   disabled={blocked || it.is_86}
+                  aria-disabled={blocked || it.is_86}
+                  aria-label={blocked || it.is_86 ? `${it.name} — out of stock` : it.name}
                   className={`rounded-xl border bg-surface p-2 text-left shadow-sm active:scale-95 transition min-h-[110px] flex flex-col gap-1 ${
                     blocked || it.is_86 ? "opacity-50 grayscale" : ""
                   }`}
@@ -873,14 +883,14 @@ function DraftBody({
                     {d.note && <div className="text-[11px] text-muted-foreground truncate">"{d.note}"</div>}
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty - 1)}>
+                    <Button variant="outline" size="icon" className="h-9 w-9" aria-label={`Decrease quantity for ${d.name}`} onClick={() => onUpdate(d.key, d.qty - 1)}>
                       −
                     </Button>
-                    <div className="w-8 text-center font-bold">{d.qty}</div>
-                    <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => onUpdate(d.key, d.qty + 1)}>
+                    <div className="w-8 text-center font-bold" aria-live="polite" aria-label={`${d.qty} of ${d.name}`}>{d.qty}</div>
+                    <Button variant="outline" size="icon" className="h-9 w-9" aria-label={`Increase quantity for ${d.name}`} onClick={() => onUpdate(d.key, d.qty + 1)}>
                       +
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-9 w-9 text-danger" onClick={() => onUpdate(d.key, 0)}>
+                    <Button variant="ghost" size="icon" className="h-9 w-9 text-danger" aria-label={`Remove ${d.name} from order`} onClick={() => onUpdate(d.key, 0)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
