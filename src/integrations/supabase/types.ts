@@ -573,7 +573,6 @@ export type Database = {
       }
       menu_items: {
         Row: {
-          base_item_id: string | null
           category_id: string | null
           created_at: string
           display_order: number
@@ -593,7 +592,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          base_item_id?: string | null
           category_id?: string | null
           created_at?: string
           display_order?: number
@@ -613,7 +611,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          base_item_id?: string | null
           category_id?: string | null
           created_at?: string
           display_order?: number

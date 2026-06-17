@@ -17,6 +17,7 @@ import {
   SheetTitle,
   SheetFooter,
 } from "@/components/ui/sheet";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -91,24 +92,44 @@ export function ItemEditor({
     }
     return s;
   });
-  // Stock tracking: is_base = this item IS the counted item; baseItemId = points to another base
+  // Stock tracking: is_base = this item IS the counted item; baseItemIds = points to one or more base items
   const [isBase, setIsBase] = useState(existing?.is_base ?? false);
-  const [baseItemId, setBaseItemId] = useState<string | null>(existing?.base_item_id ?? null);
+  const [baseItemIds, setBaseItemIds] = useState<string[]>([]);
   const [baseOptions, setBaseOptions] = useState<BaseOption[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
 
-  // Load available base items (for the "uses a base" dropdown)
+  // Load available base items and (when editing) which ones this item already links to
   const loadBaseOptions = useCallback(async () => {
-    const { data } = await db
+    const { data: opts } = await db
       .from("menu_items")
       .select("id,name")
       .eq("is_base", true)
       .eq("is_active", true)
       .order("name");
-    // Exclude self when editing
-    setBaseOptions((data ?? []).filter((i: BaseOption) => i.id !== existing?.id));
+    const filtered = (opts ?? []).filter((i: BaseOption) => i.id !== existing?.id);
+    setBaseOptions(filtered);
+
+    if (existing && filtered.length > 0) {
+      // Find which base items this item currently links to via recipes
+      const { data: myRecipes } = await db
+        .from("recipes")
+        .select("stock_pool_id")
+        .eq("menu_item_id", existing.id);
+      const myPoolIds = new Set((myRecipes ?? []).map((r: { stock_pool_id: string }) => r.stock_pool_id));
+      if (myPoolIds.size > 0) {
+        const baseIds = filtered.map((o: BaseOption) => o.id);
+        const { data: baseRecipes } = await db
+          .from("recipes")
+          .select("menu_item_id,stock_pool_id")
+          .in("menu_item_id", baseIds);
+        const selected = (baseRecipes ?? [])
+          .filter((r: { stock_pool_id: string }) => myPoolIds.has(r.stock_pool_id))
+          .map((r: { menu_item_id: string }) => r.menu_item_id);
+        setBaseItemIds(selected);
+      }
+    }
   }, [existing?.id]);
 
   useEffect(() => {
@@ -151,7 +172,7 @@ export function ItemEditor({
     setSaving(true);
     try {
       const effectiveIsBase = stockMode === "counted" && isBase;
-      const effectiveBaseItemId = stockMode === "counted" && !isBase ? baseItemId : null;
+      const effectiveBaseItemIds = stockMode === "counted" && !isBase ? baseItemIds : [];
 
       const payload = {
         restaurant_id: restaurantId,
@@ -164,7 +185,6 @@ export function ItemEditor({
         is_active: isActive,
         is_86: is86,
         is_base: effectiveIsBase,
-        base_item_id: effectiveBaseItemId,
         stock_mode: stockMode,
         stock_benchmark:
           stockMode === "counted" && benchmark.trim() !== ""
@@ -212,14 +232,14 @@ export function ItemEditor({
       }
 
       // Pool + recipe sync runs server-side (supabaseAdmin) to bypass RLS on stock_pools.
-      if (stockMode === "counted" && (effectiveIsBase || effectiveBaseItemId)) {
+      if (stockMode === "counted" && (effectiveIsBase || effectiveBaseItemIds.length > 0)) {
         await syncItemStockPool({
           data: {
             itemId: itemId!,
             itemName: name.trim(),
             restaurantId,
             isBase: effectiveIsBase,
-            baseItemId: effectiveBaseItemId,
+            baseItemIds: effectiveBaseItemIds,
           },
         });
       } else {
@@ -420,7 +440,7 @@ export function ItemEditor({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => { setIsBase(true); setBaseItemId(null); }}
+                    onClick={() => { setIsBase(true); setBaseItemIds([]); }}
                     className={`rounded-xl border p-3 text-left transition-colors ${isBase ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
                   >
                     <div className="font-semibold text-sm">This IS a base item</div>
@@ -431,8 +451,8 @@ export function ItemEditor({
                     onClick={() => { setIsBase(false); }}
                     className={`rounded-xl border p-3 text-left transition-colors ${!isBase ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
                   >
-                    <div className="font-semibold text-sm">Uses a base item</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">Availability is tied to a base item's count</div>
+                    <div className="font-semibold text-sm">Uses base item(s)</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Availability is tied to one or more base items</div>
                   </button>
                 </div>
 
@@ -444,21 +464,35 @@ export function ItemEditor({
 
                 {!isBase && (
                   <div className="space-y-1.5">
-                    <Label className="text-sm">Base item</Label>
-                    <Select
-                      value={baseItemId ?? ""}
-                      onValueChange={(v) => setBaseItemId(v || null)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={baseOptions.length === 0 ? "No base items yet — create one first" : "Select base item…"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {baseOptions.map((opt) => (
-                          <SelectItem key={opt.id} value={opt.id}>{opt.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">Ordering this item uses 1 portion from the selected base item's stock.</p>
+                    <Label className="text-sm">Base items (select one or more)</Label>
+                    {baseOptions.length === 0 ? (
+                      <p className="text-xs text-muted-foreground rounded-lg bg-accent/50 px-3 py-2">
+                        No base items yet — create one first by setting another item as "This IS a base item".
+                      </p>
+                    ) : (
+                      <div className="rounded-lg border border-border divide-y max-h-48 overflow-y-auto">
+                        {baseOptions.map((opt) => {
+                          const checked = baseItemIds.includes(opt.id);
+                          return (
+                            <label
+                              key={opt.id}
+                              className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-accent/50"
+                            >
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={(v) => {
+                                  setBaseItemIds((ids) =>
+                                    v ? [...ids, opt.id] : ids.filter((id) => id !== opt.id),
+                                  );
+                                }}
+                              />
+                              <span className="text-sm">{opt.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">Ordering this item uses 1 portion from each selected base item's stock.</p>
                   </div>
                 )}
 

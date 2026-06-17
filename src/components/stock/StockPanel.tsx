@@ -42,7 +42,7 @@ export function StockPanel() {
   const [loading, setLoading] = useState(true);
   const [baseItems, setBaseItems] = useState<BaseItem[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
-  // dependents: base_item_id → list of menu item names that use this base
+  // dependents: base item id → list of menu items that share its pool
   const [dependents, setDependents] = useState<Record<string, DependentItem[]>>({});
   const [openingDrafts, setOpeningDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -53,25 +53,23 @@ export function StockPanel() {
   const dayStartIso = dayStart.toISOString();
 
   const load = useCallback(async () => {
-    // Load base items + their linked pools (via recipes, ratio=1)
-    const [itemsRes, ledgerRes, depsRes] = await Promise.all([
+    // Load base items + ledger in parallel
+    const [itemsRes, ledgerRes] = await Promise.all([
       db.from("menu_items")
-        .select("id,name,is_base,base_item_id")
+        .select("id,name,is_base")
         .eq("is_base", true)
         .eq("is_active", true)
         .order("name"),
       db.from("stock_ledger")
         .select("id,pool_id,qty_delta,reason,note,created_at")
         .order("created_at", { ascending: false }),
-      // items that point to a base item
-      db.from("menu_items")
-        .select("id,name,base_item_id")
-        .not("base_item_id", "is", null)
-        .eq("is_active", true),
     ]);
 
-    // For each base item, find its pool via recipes (pool name = item name, ratio=1)
+    // For each base item, find its pool via recipes (ratio=1)
     const baseRaw = itemsRes.data ?? [];
+    let builtBaseItems: BaseItem[] = [];
+    const poolIdToBaseItemId = new Map<string, string>(); // pool_id → base item id
+
     if (baseRaw.length > 0) {
       const ids = baseRaw.map((i: { id: string }) => i.id);
       const { data: recipeLinks } = await db
@@ -79,25 +77,60 @@ export function StockPanel() {
         .select("menu_item_id,stock_pool_id,consume_ratio")
         .in("menu_item_id", ids);
 
-      const poolMap = new Map<string, string>(); // item_id → pool_id
+      const poolMap = new Map<string, string>(); // base item_id → pool_id
       for (const r of recipeLinks ?? []) {
         if (Math.abs(Number(r.consume_ratio) - 1) < 0.001) {
           poolMap.set(r.menu_item_id, r.stock_pool_id);
         }
       }
-      setBaseItems(baseRaw.map((i: { id: string; name: string }) => ({ id: i.id, name: i.name, pool_id: poolMap.get(i.id) ?? null })));
-    } else {
-      setBaseItems([]);
+      builtBaseItems = baseRaw.map((i: { id: string; name: string }) => ({
+        id: i.id,
+        name: i.name,
+        pool_id: poolMap.get(i.id) ?? null,
+      }));
+      for (const item of builtBaseItems) {
+        if (item.pool_id) poolIdToBaseItemId.set(item.pool_id, item.id);
+      }
     }
-
+    setBaseItems(builtBaseItems);
     setLedger(ledgerRes.data ?? []);
 
-    // Build dependents map: base_item_id → DependentItem[]
+    // Build dependents map via recipes: find non-base items that share a pool with a base item
     const depsMap: Record<string, DependentItem[]> = {};
-    for (const d of depsRes.data ?? []) {
-      if (!d.base_item_id) continue;
-      if (!depsMap[d.base_item_id]) depsMap[d.base_item_id] = [];
-      depsMap[d.base_item_id].push({ id: d.id, name: d.name });
+    if (poolIdToBaseItemId.size > 0) {
+      const allPoolIds = Array.from(poolIdToBaseItemId.keys());
+      const { data: depRecipes } = await db
+        .from("recipes")
+        .select("menu_item_id,stock_pool_id")
+        .in("stock_pool_id", allPoolIds);
+
+      // Get menu item names for non-base items found in these recipes
+      const depItemIds = [...new Set(
+        (depRecipes ?? [])
+          .map((r: { menu_item_id: string }) => r.menu_item_id)
+          .filter((id: string) => !builtBaseItems.some((b) => b.id === id)),
+      )];
+
+      if (depItemIds.length > 0) {
+        const { data: depItems } = await db
+          .from("menu_items")
+          .select("id,name")
+          .in("id", depItemIds)
+          .eq("is_active", true);
+        const itemNameMap = new Map((depItems ?? []).map((i: { id: string; name: string }) => [i.id, i.name]));
+
+        for (const r of depRecipes ?? []) {
+          const baseId = poolIdToBaseItemId.get(r.stock_pool_id);
+          if (!baseId) continue;
+          if (builtBaseItems.some((b) => b.id === r.menu_item_id)) continue; // skip base items
+          const name = itemNameMap.get(r.menu_item_id);
+          if (!name) continue;
+          if (!depsMap[baseId]) depsMap[baseId] = [];
+          if (!depsMap[baseId].some((d) => d.id === r.menu_item_id)) {
+            depsMap[baseId].push({ id: r.menu_item_id as string, name: name as string });
+          }
+        }
+      }
     }
     setDependents(depsMap);
 
