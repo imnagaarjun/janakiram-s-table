@@ -6,11 +6,11 @@ const SyncSchema = z.object({
   itemName: z.string().min(1),
   restaurantId: z.string().uuid(),
   isBase: z.boolean(),
-  baseItemId: z.string().uuid().nullable(),
+  baseItemIds: z.array(z.string().uuid()),
 });
 
 /**
- * Syncs the underlying stock_pool + recipe for a menu item after save.
+ * Syncs the underlying stock_pool + recipes for a menu item after save.
  * Runs server-side with service role to bypass RLS on stock_pools/recipes.
  */
 export const syncItemStockPool = createServerFn({ method: "POST" })
@@ -48,23 +48,25 @@ export const syncItemStockPool = createServerFn({ method: "POST" })
       });
       if (error) throw new Error(error.message);
 
-    } else if (data.baseItemId) {
-      // Find the base item's pool via its existing recipe
-      const { data: baseRecipe } = await supabaseAdmin
-        .from("recipes")
-        .select("stock_pool_id")
-        .eq("menu_item_id", data.baseItemId)
-        .maybeSingle();
+    } else if (data.baseItemIds.length > 0) {
+      // For each base item, find its pool via its existing recipe and link this item to it
+      for (const baseItemId of data.baseItemIds) {
+        const { data: baseRecipe } = await supabaseAdmin
+          .from("recipes")
+          .select("stock_pool_id")
+          .eq("menu_item_id", baseItemId)
+          .maybeSingle();
 
-      if (!baseRecipe) throw new Error("Base item has no stock pool yet — save the base item first");
+        if (!baseRecipe) throw new Error("A selected base item has no stock pool yet — save it first");
 
-      const { error } = await supabaseAdmin.from("recipes").insert({
-        restaurant_id: data.restaurantId,
-        menu_item_id: data.itemId,
-        stock_pool_id: baseRecipe.stock_pool_id,
-        consume_ratio: 1,
-      });
-      if (error) throw new Error(error.message);
+        const { error } = await supabaseAdmin.from("recipes").insert({
+          restaurant_id: data.restaurantId,
+          menu_item_id: data.itemId,
+          stock_pool_id: baseRecipe.stock_pool_id,
+          consume_ratio: 1,
+        });
+        if (error) throw new Error(error.message);
+      }
     }
 
     return { synced: true };
