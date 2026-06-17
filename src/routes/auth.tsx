@@ -38,7 +38,7 @@ function AuthPage() {
     seededRef.current = true;
     callSeed()
       .then((r) => {
-        if (r.seeded) setSeedHint("First-time setup complete. Admin email: admin@hsj.local · Password: Admin@12345678");
+        if (r.seeded) setSeedHint("First-time setup complete. Admin email: imnagaarjun@gmail.com · Password: Admin@12345678");
       })
       .catch((e) => console.error("seed failed", e));
   }, [callSeed]);

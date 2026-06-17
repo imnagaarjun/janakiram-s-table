@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-const SEED_ADMIN_EMAIL = "admin@hsj.local";
+const SEED_ADMIN_EMAIL = "imnagaarjun@gmail.com";
 const SEED_ADMIN_PASSWORD = "Admin@12345678";
 
 /**
@@ -29,13 +29,24 @@ export const ensureSeed = createServerFn({ method: "POST" }).handler(async () =>
     .single();
   if (rErr || !rest) throw new Error(rErr?.message ?? "Failed to create restaurant");
 
-  const { data: created, error: uErr } = await supabaseAdmin.auth.admin.createUser({
-    email: SEED_ADMIN_EMAIL,
-    password: SEED_ADMIN_PASSWORD,
-    email_confirm: true,
-  });
-  if (uErr || !created.user) throw new Error(uErr?.message ?? "Failed to create user");
-  const userId = created.user.id;
+  // Reuse existing auth user if the email already exists, otherwise create one
+  const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+  const existingAuthUser = (existingUsers?.users ?? []).find(
+    (u: { email?: string }) => u.email?.toLowerCase() === SEED_ADMIN_EMAIL.toLowerCase(),
+  );
+
+  let userId: string;
+  if (existingAuthUser) {
+    userId = existingAuthUser.id;
+  } else {
+    const { data: created, error: uErr } = await supabaseAdmin.auth.admin.createUser({
+      email: SEED_ADMIN_EMAIL,
+      password: SEED_ADMIN_PASSWORD,
+      email_confirm: true,
+    });
+    if (uErr || !created.user) throw new Error(uErr?.message ?? "Failed to create user");
+    userId = created.user.id;
+  }
 
   const { error: pErr } = await supabaseAdmin.from("profiles").insert({
     id: userId,

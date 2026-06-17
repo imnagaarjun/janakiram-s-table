@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
 import { uploadMenuImage } from "@/lib/menu-storage";
 import { MenuImage } from "@/components/menu/MenuImage";
-import { createStaffUser, updateStaffUser, toggleUserActive, deleteStaffUser, resetStaffPassword } from "@/lib/user-management.functions";
+import { createStaffUser, updateStaffUser, toggleUserActive, deleteStaffUser, resetStaffPassword, updateStaffEmail } from "@/lib/user-management.functions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -160,6 +160,8 @@ export function UsersPanel() {
   const [deleteTarget, setDeleteTarget] = useState<StaffRow | null>(null);
   const [resetTarget, setResetTarget] = useState<StaffRow | null>(null);
   const [resetLink, setResetLink] = useState<string | null>(null);
+  const [emailChanges, setEmailChanges] = useState<Record<string, string>>({});
+  const [emailSaving, setEmailSaving] = useState<string | null>(null);
   const [roles, setRoles] = useState<string[]>(DEFAULT_ROLES);
   const [newRole, setNewRole] = useState("");
 
@@ -168,6 +170,7 @@ export function UsersPanel() {
   const callToggle = useServerFn(toggleUserActive);
   const callDelete = useServerFn(deleteStaffUser);
   const callReset = useServerFn(resetStaffPassword);
+  const callUpdateEmail = useServerFn(updateStaffEmail);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -303,6 +306,22 @@ export function UsersPanel() {
       toast.error(e instanceof Error ? e.message : "Failed to send reset");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function changeLoginEmail(userId: string, currentEmail: string) {
+    const newEmail = (emailChanges[userId] ?? "").trim().toLowerCase();
+    if (!newEmail || newEmail === currentEmail.toLowerCase()) return;
+    setEmailSaving(userId);
+    try {
+      await callUpdateEmail({ data: { userId, email: newEmail } });
+      toast.success("Login email updated");
+      setEmailChanges((m) => { const n = { ...m }; delete n[userId]; return n; });
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update email");
+    } finally {
+      setEmailSaving(null);
     }
   }
 
@@ -447,6 +466,32 @@ export function UsersPanel() {
                         onChange={(e) => setEditForm((f) => ({ ...f, contactEmail: e.target.value }))}
                         placeholder="For OTP & password reset"
                       />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label className="block mb-1 text-xs">Login email <span className="text-muted-foreground">(used to sign in)</span></Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="email"
+                          value={emailChanges[s.id] ?? s.auth_email}
+                          onChange={(e) => setEmailChanges((m) => ({ ...m, [s.id]: e.target.value }))}
+                          placeholder={s.auth_email}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            emailSaving === s.id ||
+                            !(emailChanges[s.id] ?? "").trim() ||
+                            (emailChanges[s.id] ?? "").toLowerCase() === s.auth_email.toLowerCase()
+                          }
+                          onClick={() => changeLoginEmail(s.id, s.auth_email)}
+                          className="shrink-0"
+                        >
+                          {emailSaving === s.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "Update"}
+                        </Button>
+                      </div>
                     </div>
                     <div className="sm:col-span-2 flex items-center justify-between rounded-lg border border-border px-3 py-2">
                       <div>
