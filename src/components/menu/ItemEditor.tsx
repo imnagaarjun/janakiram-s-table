@@ -175,10 +175,10 @@ export function ItemEditor({
       let itemId = existing?.id;
       if (existing) {
         const { error } = await db.from("menu_items").update(payload).eq("id", existing.id);
-        if (error) throw error;
+        if (error) throw new Error(error.message);
       } else {
         const { data, error } = await db.from("menu_items").insert(payload).select().single();
-        if (error) throw error;
+        if (error) throw new Error(error.message);
         itemId = data.id;
       }
       if (!itemId) throw new Error("Save failed");
@@ -227,7 +227,7 @@ export function ItemEditor({
             .insert({ restaurant_id: restaurantId, name: name.trim(), type: "prepared_base", unit: "portion" })
             .select("id")
             .single();
-          if (ins.error) throw ins.error;
+          if (ins.error) throw new Error(ins.error.message);
           pool = ins.data;
         }
         const { error } = await db.from("recipes").insert({
@@ -236,7 +236,7 @@ export function ItemEditor({
           stock_pool_id: pool.id,
           consume_ratio: 1,
         });
-        if (error) throw error;
+        if (error) throw new Error(error.message);
       } else if (stockMode === "counted" && effectiveBaseItemId) {
         // Find the base item's pool via its recipe, then link this item → same pool (1:1)
         const { data: baseRecipe } = await db
@@ -251,14 +251,14 @@ export function ItemEditor({
             stock_pool_id: baseRecipe.stock_pool_id,
             consume_ratio: 1,
           });
-          if (error) throw error;
+          if (error) throw new Error(error.message);
         }
       }
 
       toast.success(existing ? "Updated" : "Created");
       onSaved();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Save failed");
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
