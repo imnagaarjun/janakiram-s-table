@@ -22,6 +22,8 @@ export interface MenuItem {
   is_favorite: boolean;
   is_active: boolean;
   is_86: boolean;
+  is_base: boolean;
+  base_item_id: string | null;
   stock_mode: "counted" | "unlimited";
   stock_benchmark: number | null;
   gst_rate: number;
