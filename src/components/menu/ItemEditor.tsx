@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Upload, X, Plus, Trash2 } from "lucide-react";
+import { Loader2, Upload, X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { uploadMenuImage } from "@/lib/menu-storage";
@@ -36,17 +36,9 @@ import {
 import type { Category } from "./CategoriesPanel";
 import type { Channel, MenuItem, MenuPrice } from "./ItemsPanel";
 
-interface StockPool {
+interface BaseOption {
   id: string;
   name: string;
-  type: "prepared_base" | "raw_ingredient";
-  unit: string;
-}
-
-interface RecipeRow {
-  id?: string; // existing row id
-  stock_pool_id: string;
-  consume_ratio: number;
 }
 
 const DEFAULT_GST = 5;
@@ -98,56 +90,29 @@ export function ItemEditor({
     }
     return s;
   });
-  const [pools, setPools] = useState<StockPool[]>([]);
-  const [recipes, setRecipes] = useState<RecipeRow[]>([]);
-  const [ownRootPool, setOwnRootPool] = useState(false);
-  // "portions" = simple own-pool tracking; "ingredients" = multi-pool recipe
-  const [trackingMode, setTrackingMode] = useState<"portions" | "ingredients">("portions");
-  const [newPoolName, setNewPoolName] = useState("");
-  const [newPoolType, setNewPoolType] = useState<"prepared_base" | "raw_ingredient">(
-    "raw_ingredient",
-  );
+  // Stock tracking: is_base = this item IS the counted item; baseItemId = points to another base
+  const [isBase, setIsBase] = useState(existing?.is_base ?? false);
+  const [baseItemId, setBaseItemId] = useState<string | null>(existing?.base_item_id ?? null);
+  const [baseOptions, setBaseOptions] = useState<BaseOption[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
 
-  // Load pools + existing recipes
-  const reloadPools = useCallback(async () => {
-    const { data } = await db.from("stock_pools").select("*").order("name");
-    setPools(data ?? []);
-  }, []);
+  // Load available base items (for the "uses a base" dropdown)
+  const loadBaseOptions = useCallback(async () => {
+    const { data } = await db
+      .from("menu_items")
+      .select("id,name")
+      .eq("is_base", true)
+      .eq("is_active", true)
+      .order("name");
+    // Exclude self when editing
+    setBaseOptions((data ?? []).filter((i: BaseOption) => i.id !== existing?.id));
+  }, [existing?.id]);
 
   useEffect(() => {
-    reloadPools();
-  }, [reloadPools]);
-
-  useEffect(() => {
-    if (!existing) return;
-    (async () => {
-      const { data } = await db
-        .from("recipes")
-        .select("*")
-        .eq("menu_item_id", existing.id);
-      const rows: RecipeRow[] = (data ?? []).map((r: { id: string; stock_pool_id: string; consume_ratio: number }) => ({
-        id: r.id,
-        stock_pool_id: r.stock_pool_id,
-        consume_ratio: Number(r.consume_ratio),
-      }));
-      setRecipes(rows);
-      // detect "own root pool": a recipe whose pool name == item name
-      if (rows.length === 1) {
-        const p = pools.find((x) => x.id === rows[0].stock_pool_id);
-        if (p && p.name === existing.name && rows[0].consume_ratio === 1) {
-          setOwnRootPool(true);
-          setTrackingMode("portions");
-        } else {
-          setTrackingMode("ingredients");
-        }
-      } else if (rows.length > 1) {
-        setTrackingMode("ingredients");
-      }
-    })();
-  }, [existing, pools]);
+    loadBaseOptions();
+  }, [loadBaseOptions]);
 
   const priceSplits = useMemo(() => {
     const out: Record<string, ReturnType<typeof splitInclusive> | null> = {};
@@ -179,45 +144,14 @@ export function ItemEditor({
     }
   }
 
-  async function createPool() {
-    if (!newPoolName.trim()) return;
-    const { data, error } = await db
-      .from("stock_pools")
-      .insert({
-        restaurant_id: restaurantId,
-        name: newPoolName.trim(),
-        type: newPoolType,
-        unit: "unit",
-      })
-      .select()
-      .single();
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    setNewPoolName("");
-    await reloadPools();
-    setRecipes((r) => [...r, { stock_pool_id: data.id, consume_ratio: 1 }]);
-  }
-
-  function addRecipeRow(poolId: string) {
-    if (recipes.some((r) => r.stock_pool_id === poolId)) return;
-    setRecipes((r) => [...r, { stock_pool_id: poolId, consume_ratio: 1 }]);
-  }
-
-  function updateRecipe(idx: number, ratio: number) {
-    setRecipes((r) => r.map((row, i) => (i === idx ? { ...row, consume_ratio: ratio } : row)));
-  }
-
-  function removeRecipe(idx: number) {
-    setRecipes((r) => r.filter((_, i) => i !== idx));
-  }
-
   async function save() {
     if (!code.trim()) return toast.error("Item code is required");
     if (!name.trim()) return toast.error("Name is required");
     setSaving(true);
     try {
+      const effectiveIsBase = stockMode === "counted" && isBase;
+      const effectiveBaseItemId = stockMode === "counted" && !isBase ? baseItemId : null;
+
       const payload = {
         restaurant_id: restaurantId,
         item_code: code.trim(),
@@ -228,6 +162,8 @@ export function ItemEditor({
         is_favorite: isFavorite,
         is_active: isActive,
         is_86: is86,
+        is_base: effectiveIsBase,
+        base_item_id: effectiveBaseItemId,
         stock_mode: stockMode,
         stock_benchmark:
           stockMode === "counted" && benchmark.trim() !== ""
@@ -274,45 +210,47 @@ export function ItemEditor({
         }
       }
 
-      // Recipes: handle counted vs unlimited
-      // Always wipe & rewrite to keep it simple
+      // Auto-manage the underlying pool + recipe so the ledger math keeps working.
       await db.from("recipes").delete().eq("menu_item_id", itemId);
 
-      if (stockMode === "counted") {
-        let finalRecipes = [...recipes];
-        if (ownRootPool) {
-          // ensure a stock pool with the same name as item exists
-          let { data: existingPool } = await db
+      if (stockMode === "counted" && effectiveIsBase) {
+        // Ensure a pool named after this item exists, then link item → pool (1:1)
+        let { data: pool } = await db
+          .from("stock_pools")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("name", name.trim())
+          .maybeSingle();
+        if (!pool) {
+          const ins = await db
             .from("stock_pools")
-            .select("*")
-            .eq("name", name.trim())
-            .maybeSingle();
-          if (!existingPool) {
-            const ins = await db
-              .from("stock_pools")
-              .insert({
-                restaurant_id: restaurantId,
-                name: name.trim(),
-                type: "prepared_base",
-                unit: "unit",
-              })
-              .select()
-              .single();
-            if (ins.error) throw ins.error;
-            existingPool = ins.data;
-          }
-          // remove any duplicate referencing this pool then add canonical 1:1
-          finalRecipes = finalRecipes.filter((r) => r.stock_pool_id !== existingPool.id);
-          finalRecipes.push({ stock_pool_id: existingPool.id, consume_ratio: 1 });
+            .insert({ restaurant_id: restaurantId, name: name.trim(), type: "prepared_base", unit: "portion" })
+            .select("id")
+            .single();
+          if (ins.error) throw ins.error;
+          pool = ins.data;
         }
-        if (finalRecipes.length > 0) {
-          const rows = finalRecipes.map((r) => ({
+        const { error } = await db.from("recipes").insert({
+          restaurant_id: restaurantId,
+          menu_item_id: itemId!,
+          stock_pool_id: pool.id,
+          consume_ratio: 1,
+        });
+        if (error) throw error;
+      } else if (stockMode === "counted" && effectiveBaseItemId) {
+        // Find the base item's pool via its recipe, then link this item → same pool (1:1)
+        const { data: baseRecipe } = await db
+          .from("recipes")
+          .select("stock_pool_id")
+          .eq("menu_item_id", effectiveBaseItemId)
+          .maybeSingle();
+        if (baseRecipe) {
+          const { error } = await db.from("recipes").insert({
             restaurant_id: restaurantId,
-            menu_item_id: itemId,
-            stock_pool_id: r.stock_pool_id,
-            consume_ratio: r.consume_ratio,
-          }));
-          const { error } = await db.from("recipes").insert(rows);
+            menu_item_id: itemId!,
+            stock_pool_id: baseRecipe.stock_pool_id,
+            consume_ratio: 1,
+          });
           if (error) throw error;
         }
       }
@@ -335,10 +273,6 @@ export function ItemEditor({
       onSaved();
     }
   }
-
-  const availablePoolsForPicker = pools.filter(
-    (p) => !recipes.some((r) => r.stock_pool_id === p.id),
-  );
 
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
@@ -510,108 +444,53 @@ export function ItemEditor({
 
             {stockMode === "counted" && (
               <div className="space-y-4">
-                {/* Tracking mode — simple two-option choice */}
+                {/* Base or linked */}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => { setTrackingMode("portions"); setOwnRootPool(true); setRecipes([]); }}
-                    className={`rounded-xl border p-3 text-left transition-colors ${trackingMode === "portions" ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
+                    onClick={() => { setIsBase(true); setBaseItemId(null); }}
+                    className={`rounded-xl border p-3 text-left transition-colors ${isBase ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
                   >
-                    <div className="font-semibold text-sm">Portions</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">Track ready portions (e.g. bowls of Mutton Chukka in the pot)</div>
+                    <div className="font-semibold text-sm">This IS a base item</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">You'll set the count in Daily Stock each morning</div>
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setTrackingMode("ingredients"); setOwnRootPool(false); }}
-                    className={`rounded-xl border p-3 text-left transition-colors ${trackingMode === "ingredients" ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
+                    onClick={() => { setIsBase(false); }}
+                    className={`rounded-xl border p-3 text-left transition-colors ${!isBase ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
                   >
-                    <div className="font-semibold text-sm">Ingredients</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">Track by raw ingredients consumed per portion</div>
+                    <div className="font-semibold text-sm">Uses a base item</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">Availability is tied to a base item's count</div>
                   </button>
                 </div>
 
-                {trackingMode === "portions" && (
+                {isBase && (
                   <p className="text-xs text-muted-foreground rounded-lg bg-accent/50 px-3 py-2">
                     Set the opening count each day from the <strong>Daily Stock</strong> page. Availability drops by 1 each time this dish is ordered.
                   </p>
                 )}
 
-                {trackingMode === "ingredients" && (
-                  <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-sm">Ingredients used per portion</Label>
-                      {recipes.length === 0 && (
-                        <p className="text-xs text-muted-foreground">Add the ingredients this dish consumes each time it's ordered.</p>
-                      )}
-                      {recipes.map((r, idx) => {
-                        const pool = pools.find((p) => p.id === r.stock_pool_id);
-                        return (
-                          <div key={idx} className="flex items-center gap-2">
-                            <div className="flex-1 px-3 py-2 rounded-lg border border-border bg-accent/50 text-sm">
-                              <div className="font-medium">{pool?.name ?? "—"}</div>
-                              <div className="text-xs text-muted-foreground capitalize">{pool?.type === "raw_ingredient" ? "Raw ingredient" : "Ready-made base"}</div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={r.consume_ratio}
-                                onChange={(e) => updateRecipe(idx, parseFloat(e.target.value) || 0)}
-                                className="w-24 h-9"
-                              />
-                              <span className="text-xs text-muted-foreground">/ portion</span>
-                            </div>
-                            <Button type="button" variant="ghost" size="icon" onClick={() => removeRecipe(idx)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-sm">Add existing ingredient</Label>
-                      <Select value="" onValueChange={(v) => v && addRecipeRow(v)} disabled={availablePoolsForPicker.length === 0}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={availablePoolsForPicker.length === 0 ? "No more ingredients" : "Pick an ingredient…"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availablePoolsForPicker.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name} <span className="text-muted-foreground">({p.type === "raw_ingredient" ? "raw" : "base"})</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2 border-t border-border pt-3">
-                      <Label className="text-sm">Create new ingredient</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="e.g. Raw Egg"
-                          value={newPoolName}
-                          onChange={(e) => setNewPoolName(e.target.value)}
-                          className="flex-1"
-                        />
-                        <Select value={newPoolType} onValueChange={(v) => setNewPoolType(v as "prepared_base" | "raw_ingredient")}>
-                          <SelectTrigger className="w-36">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="raw_ingredient">Raw ingredient</SelectItem>
-                            <SelectItem value="prepared_base">Ready-made base</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button type="button" onClick={createPool} disabled={!newPoolName.trim()}>
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
+                {!isBase && (
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Base item</Label>
+                    <Select
+                      value={baseItemId ?? ""}
+                      onValueChange={(v) => setBaseItemId(v || null)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={baseOptions.length === 0 ? "No base items yet — create one first" : "Select base item…"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {baseOptions.map((opt) => (
+                          <SelectItem key={opt.id} value={opt.id}>{opt.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Ordering this item uses 1 portion from the selected base item's stock.</p>
                   </div>
                 )}
 
-                {/* Benchmark — applies to both modes */}
+                {/* Benchmark */}
                 <div className="space-y-1 border-t border-border pt-3">
                   <Label className="text-sm">Alert when stock drops to <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Input

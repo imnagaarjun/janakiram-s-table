@@ -573,6 +573,7 @@ export type Database = {
       }
       menu_items: {
         Row: {
+          base_item_id: string | null
           category_id: string | null
           created_at: string
           display_order: number
@@ -581,15 +582,18 @@ export type Database = {
           image_url: string | null
           is_86: boolean
           is_active: boolean
+          is_base: boolean
           is_favorite: boolean
           item_code: string
           kot_short_name: string
           name: string
           restaurant_id: string
+          stock_benchmark: number | null
           stock_mode: Database["public"]["Enums"]["stock_mode"]
           updated_at: string
         }
         Insert: {
+          base_item_id?: string | null
           category_id?: string | null
           created_at?: string
           display_order?: number
@@ -598,15 +602,18 @@ export type Database = {
           image_url?: string | null
           is_86?: boolean
           is_active?: boolean
+          is_base?: boolean
           is_favorite?: boolean
           item_code: string
           kot_short_name: string
           name: string
           restaurant_id: string
+          stock_benchmark?: number | null
           stock_mode?: Database["public"]["Enums"]["stock_mode"]
           updated_at?: string
         }
         Update: {
+          base_item_id?: string | null
           category_id?: string | null
           created_at?: string
           display_order?: number
@@ -615,11 +622,13 @@ export type Database = {
           image_url?: string | null
           is_86?: boolean
           is_active?: boolean
+          is_base?: boolean
           is_favorite?: boolean
           item_code?: string
           kot_short_name?: string
           name?: string
           restaurant_id?: string
+          stock_benchmark?: number | null
           stock_mode?: Database["public"]["Enums"]["stock_mode"]
           updated_at?: string
         }
@@ -1055,6 +1064,7 @@ export type Database = {
       }
       stock_ledger: {
         Row: {
+          business_date: string
           created_at: string
           created_by: string | null
           id: string
@@ -1066,6 +1076,7 @@ export type Database = {
           restaurant_id: string
         }
         Insert: {
+          business_date?: string
           created_at?: string
           created_by?: string | null
           id?: string
@@ -1077,6 +1088,7 @@ export type Database = {
           restaurant_id: string
         }
         Update: {
+          business_date?: string
           created_at?: string
           created_by?: string | null
           id?: string

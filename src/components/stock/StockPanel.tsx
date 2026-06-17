@@ -12,15 +12,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
-interface Pool {
+interface BaseItem {
   id: string;
   name: string;
-  type: "prepared_base" | "raw_ingredient";
-  unit: string | null;
+  pool_id: string | null; // linked stock_pool id (auto-created when is_base is set)
 }
 interface LedgerRow {
   id: string;
@@ -30,94 +28,109 @@ interface LedgerRow {
   note: string | null;
   created_at: string;
 }
-interface Recipe {
-  menu_item_id: string;
-  stock_pool_id: string;
-  consume_ratio: number;
-}
-interface Item {
+interface DependentItem {
   id: string;
   name: string;
-  stock_mode: "counted" | "unlimited";
-  is_active: boolean;
-  is_86: boolean;
+}
+
+/** Returns today's IST date as YYYY-MM-DD */
+function istToday(): string {
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split("T")[0];
 }
 
 export function StockPanel() {
   const [loading, setLoading] = useState(true);
-  const [pools, setPools] = useState<Pool[]>([]);
+  const [baseItems, setBaseItems] = useState<BaseItem[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [items, setItems] = useState<Item[]>([]);
+  // dependents: base_item_id → list of menu item names that use this base
+  const [dependents, setDependents] = useState<Record<string, DependentItem[]>>({});
   const [openingDrafts, setOpeningDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [adjustOpen, setAdjustOpen] = useState<{ pool: Pool; mode: "restock" | "wastage" } | null>(null);
+  const [adjustOpen, setAdjustOpen] = useState<{ item: BaseItem; mode: "restock" | "wastage" } | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
 
   const dayStart = useMemo(() => businessDayStart(), []);
   const dayStartIso = dayStart.toISOString();
 
   const load = useCallback(async () => {
-    const [poolsRes, ledgerRes, recipesRes, itemsRes] = await Promise.all([
-      db.from("stock_pools").select("id,name,type,unit").order("name"),
-      db.from("stock_ledger").select("id,pool_id,qty_delta,reason,note,created_at").order("created_at", { ascending: false }),
-      db.from("recipes").select("menu_item_id,stock_pool_id,consume_ratio"),
-      db.from("menu_items").select("id,name,stock_mode,is_active,is_86"),
+    // Load base items + their linked pools (via recipes, ratio=1)
+    const [itemsRes, ledgerRes, depsRes] = await Promise.all([
+      db.from("menu_items")
+        .select("id,name,is_base,base_item_id")
+        .eq("is_base", true)
+        .eq("is_active", true)
+        .order("name"),
+      db.from("stock_ledger")
+        .select("id,pool_id,qty_delta,reason,note,created_at")
+        .order("created_at", { ascending: false }),
+      // items that point to a base item
+      db.from("menu_items")
+        .select("id,name,base_item_id")
+        .not("base_item_id", "is", null)
+        .eq("is_active", true),
     ]);
-    setPools(poolsRes.data ?? []);
+
+    // For each base item, find its pool via recipes (pool name = item name, ratio=1)
+    const baseRaw = itemsRes.data ?? [];
+    if (baseRaw.length > 0) {
+      const ids = baseRaw.map((i: { id: string }) => i.id);
+      const { data: recipeLinks } = await db
+        .from("recipes")
+        .select("menu_item_id,stock_pool_id,consume_ratio")
+        .in("menu_item_id", ids);
+
+      const poolMap = new Map<string, string>(); // item_id → pool_id
+      for (const r of recipeLinks ?? []) {
+        if (Math.abs(Number(r.consume_ratio) - 1) < 0.001) {
+          poolMap.set(r.menu_item_id, r.stock_pool_id);
+        }
+      }
+      setBaseItems(baseRaw.map((i: { id: string; name: string }) => ({ id: i.id, name: i.name, pool_id: poolMap.get(i.id) ?? null })));
+    } else {
+      setBaseItems([]);
+    }
+
     setLedger(ledgerRes.data ?? []);
-    setRecipes(recipesRes.data ?? []);
-    setItems(itemsRes.data ?? []);
+
+    // Build dependents map: base_item_id → DependentItem[]
+    const depsMap: Record<string, DependentItem[]> = {};
+    for (const d of depsRes.data ?? []) {
+      if (!d.base_item_id) continue;
+      if (!depsMap[d.base_item_id]) depsMap[d.base_item_id] = [];
+      depsMap[d.base_item_id].push({ id: d.id, name: d.name });
+    }
+    setDependents(depsMap);
+
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const poolQty = useCallback(
-    (poolId: string) =>
-      ledger
-        .filter((l) => l.pool_id === poolId && l.created_at <= new Date().toISOString())
-        .reduce((s, l) => s + Number(l.qty_delta), 0),
+    (poolId: string | null) => {
+      if (!poolId) return 0;
+      return ledger
+        .filter((l) => l.pool_id === poolId)
+        .reduce((s, l) => s + Number(l.qty_delta), 0);
+    },
     [ledger],
   );
 
   const openingTodaySet = useCallback(
-    (poolId: string) =>
-      ledger.some(
-        (l) => l.pool_id === poolId && l.reason === "opening" && l.created_at >= dayStartIso && l.created_at <= new Date().toISOString(),
-      ),
+    (poolId: string | null) => {
+      if (!poolId) return false;
+      return ledger.some(
+        (l) => l.pool_id === poolId && l.reason === "opening" && l.created_at >= dayStartIso,
+      );
+    },
     [ledger, dayStartIso],
   );
 
-  const itemAvailable = useCallback(
-    (itemId: string): number => {
-      const it = items.find((i) => i.id === itemId);
-      if (!it || it.is_86 || !it.is_active) return 0;
-      if (it.stock_mode === "unlimited") return 999999;
-      const rs = recipes.filter((r) => r.menu_item_id === itemId);
-      if (rs.length === 0) return 0;
-      return rs.reduce((min, r) => {
-        const v = Math.floor(poolQty(r.stock_pool_id) / Number(r.consume_ratio || 1));
-        return Math.min(min, Math.max(0, v));
-      }, Infinity) as number;
-    },
-    [items, recipes, poolQty],
-  );
-
-  const dependentItems = useCallback(
-    (poolId: string) => {
-      const itemIds = new Set(recipes.filter((r) => r.stock_pool_id === poolId).map((r) => r.menu_item_id));
-      return items.filter((i) => itemIds.has(i.id) && i.stock_mode === "counted");
-    },
-    [recipes, items],
-  );
-
-  const pendingPools = pools.filter((p) => !openingTodaySet(p.id));
-  const countedPools = pools; // every pool listed below regardless
+  const pendingItems = baseItems.filter((i) => !openingTodaySet(i.pool_id));
 
   async function saveOpenings() {
     const entries = Object.entries(openingDrafts)
-      .map(([pool_id, v]) => ({ pool_id, qty: Number(v) }))
+      .map(([item_id, v]) => ({ item_id, qty: Number(v) }))
       .filter((e) => Number.isFinite(e.qty) && e.qty > 0);
     if (entries.length === 0) {
       toast.error("Enter at least one opening count");
@@ -127,15 +140,32 @@ export function StockPanel() {
     const { data: u } = await supabase.auth.getUser();
     const uid = u.user?.id;
     const { data: prof } = await db.from("profiles").select("restaurant_id").eq("id", uid).single();
-    const rows = entries.map((e) => ({
-      restaurant_id: prof.restaurant_id,
-      pool_id: e.pool_id,
-      qty_delta: e.qty,
-      reason: "opening",
-      note: "Morning count",
-      created_by: uid,
-    }));
-    const { error } = await db.from("stock_ledger").insert(rows);
+    const businessDate = istToday();
+
+    const rows = entries
+      .map((e) => {
+        const item = baseItems.find((i) => i.id === e.item_id);
+        if (!item?.pool_id) return null;
+        return {
+          restaurant_id: prof!.restaurant_id,
+          pool_id: item.pool_id,
+          qty_delta: e.qty,
+          reason: "opening" as const,
+          note: "Morning count",
+          created_by: uid,
+          business_date: businessDate,
+        };
+      })
+      .filter(Boolean);
+
+    if (rows.length === 0) {
+      toast.error("Selected items don't have a stock pool yet — save the item again to create one");
+      setSaving(false);
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (db.from("stock_ledger") as any).insert(rows);
     setSaving(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Saved ${rows.length} opening count${rows.length > 1 ? "s" : ""}`);
@@ -165,35 +195,35 @@ export function StockPanel() {
         </Button>
       </header>
 
-      {pools.length === 0 && (
+      {baseItems.length === 0 && (
         <div className="rounded-2xl border border-dashed border-border bg-surface p-8 text-center">
           <Boxes className="mx-auto h-10 w-10 text-muted-foreground mb-2" />
           <p className="text-sm text-muted-foreground">
-            No stock pools yet. Mark a counted menu item as "Use as root pool" or link recipe pools first.
+            No base items yet. Open a menu item, set stock to <strong>Counted</strong>, and mark it as <strong>This is a base item</strong>.
           </p>
         </div>
       )}
 
-      {pendingPools.length > 0 && (
+      {pendingItems.length > 0 && (
         <section className="rounded-2xl border border-border bg-surface shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b bg-warning/10">
-            <h2 className="font-semibold text-sm">Morning count needed ({pendingPools.length})</h2>
-            <p className="text-xs text-muted-foreground">Enter today's opening quantity for each pool.</p>
+            <h2 className="font-semibold text-sm">Morning count needed ({pendingItems.length})</h2>
+            <p className="text-xs text-muted-foreground">Enter today's opening quantity for each item.</p>
           </div>
           <div className="divide-y">
-            {pendingPools.map((p) => (
-              <div key={p.id} className="flex items-center gap-3 p-4">
+            {pendingItems.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 p-4">
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{p.name}</div>
-                  <div className="text-xs text-muted-foreground">{p.type === "prepared_base" ? "Prepared base" : "Raw ingredient"} {p.unit ? `· ${p.unit}` : ""}</div>
+                  <div className="font-medium truncate">{item.name}</div>
+                  <div className="text-xs text-muted-foreground">portions</div>
                 </div>
                 <Input
                   type="number"
                   inputMode="decimal"
                   className="w-28 h-12 text-lg text-right font-semibold"
                   placeholder="0"
-                  value={openingDrafts[p.id] ?? ""}
-                  onChange={(e) => setOpeningDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
+                  value={openingDrafts[item.id] ?? ""}
+                  onChange={(e) => setOpeningDrafts((d) => ({ ...d, [item.id]: e.target.value }))}
                 />
               </div>
             ))}
@@ -207,46 +237,42 @@ export function StockPanel() {
         </section>
       )}
 
-      {countedPools.length > 0 && (
+      {baseItems.length > 0 && (
         <section className="rounded-2xl border border-border bg-surface shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b">
-            <h2 className="font-semibold text-sm">Live stock pools</h2>
+            <h2 className="font-semibold text-sm">Live stock</h2>
           </div>
           <div className="divide-y">
-            {countedPools.map((p) => {
-              const qty = poolQty(p.id);
-              const set = openingTodaySet(p.id);
+            {baseItems.map((item) => {
+              const qty = poolQty(item.pool_id);
+              const set = openingTodaySet(item.pool_id);
+              const deps = dependents[item.id] ?? [];
               return (
-                <div key={p.id} className="p-4">
+                <div key={item.id} className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate flex items-center gap-2">
-                        {p.name}
+                        {item.name}
                         {!set && <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-warning/20 text-warning-foreground">no opening</span>}
                       </div>
-                      <div className="text-xs text-muted-foreground">{p.type === "prepared_base" ? "Prepared base" : "Raw ingredient"} {p.unit ? `· ${p.unit}` : ""}</div>
+                      <div className="text-xs text-muted-foreground">portions</div>
                     </div>
                     <div className="text-2xl font-bold tabular-nums">{qty.toFixed(qty % 1 === 0 ? 0 : 2)}</div>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="outline" className="h-10 px-2" onClick={() => setAdjustOpen({ pool: p, mode: "restock" })}>
+                      <Button size="sm" variant="outline" className="h-10 px-2" onClick={() => setAdjustOpen({ item, mode: "restock" })}>
                         <Plus className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="outline" className="h-10 px-2 text-danger" onClick={() => setAdjustOpen({ pool: p, mode: "wastage" })}>
+                      <Button size="sm" variant="outline" className="h-10 px-2 text-danger" onClick={() => setAdjustOpen({ item, mode: "wastage" })}>
                         <Minus className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
-                  {dependentItems(p.id).length > 0 && (
+                  {deps.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-dashed flex flex-wrap gap-2">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1"><ChefHat className="h-3 w-3" /> Items:</span>
-                      {dependentItems(p.id).map((it) => {
-                        const av = itemAvailable(it.id);
-                        return (
-                          <span key={it.id} className="text-xs px-2 py-1 rounded bg-accent text-foreground">
-                            {it.name}: <span className="font-semibold">{av === 999999 ? "∞" : av}</span>
-                          </span>
-                        );
-                      })}
+                      <span className="text-xs text-muted-foreground flex items-center gap-1"><ChefHat className="h-3 w-3" /> Also sold as:</span>
+                      {deps.map((d) => (
+                        <span key={d.id} className="text-xs px-2 py-1 rounded bg-accent text-foreground">{d.name}</span>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -258,7 +284,7 @@ export function StockPanel() {
 
       {adjustOpen && (
         <AdjustDialog
-          pool={adjustOpen.pool}
+          item={adjustOpen.item}
           mode={adjustOpen.mode}
           onClose={() => setAdjustOpen(null)}
           onSaved={load}
@@ -267,7 +293,7 @@ export function StockPanel() {
 
       {closeOpen && (
         <CloseDayDialog
-          pools={pools.map((p) => ({ ...p, balance: poolQty(p.id) })).filter((p) => p.balance > 0)}
+          items={baseItems.map((i) => ({ ...i, balance: poolQty(i.pool_id) })).filter((i) => i.balance > 0)}
           onClose={() => setCloseOpen(false)}
           onDone={load}
         />
@@ -277,12 +303,12 @@ export function StockPanel() {
 }
 
 function AdjustDialog({
-  pool,
+  item,
   mode,
   onClose,
   onSaved,
 }: {
-  pool: Pool;
+  item: BaseItem;
   mode: "restock" | "wastage";
   onClose: () => void;
   onSaved: () => void;
@@ -295,18 +321,20 @@ function AdjustDialog({
     const n = Number(qty);
     if (!Number.isFinite(n) || n <= 0) { toast.error("Enter a positive quantity"); return; }
     if (mode === "wastage" && !reason.trim()) { toast.error("Reason is required for wastage"); return; }
+    if (!item.pool_id) { toast.error("This item has no stock pool yet — save it again from the menu editor"); return; }
     setBusy(true);
     const { data: u } = await supabase.auth.getUser();
     const uid = u.user?.id;
     const { data: prof } = await db.from("profiles").select("restaurant_id").eq("id", uid).single();
     const { error } = await db.from("stock_ledger").insert({
-      restaurant_id: prof.restaurant_id,
-      pool_id: pool.id,
+      restaurant_id: prof!.restaurant_id,
+      pool_id: item.pool_id,
       qty_delta: mode === "restock" ? n : -n,
-      reason: mode,
+      reason: mode as "restock" | "wastage",
       note: reason.trim() || null,
       created_by: uid,
-    });
+      business_date: istToday(),
+    } as any);
     setBusy(false);
     if (error) { toast.error(error.message); return; }
     toast.success(mode === "restock" ? "Restock added" : "Wastage recorded");
@@ -318,11 +346,11 @@ function AdjustDialog({
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === "restock" ? "Restock" : "Wastage"} — {pool.name}</DialogTitle>
+          <DialogTitle>{mode === "restock" ? "Restock" : "Wastage"} — {item.name}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>Quantity {pool.unit ? `(${pool.unit})` : ""}</Label>
+            <Label>Quantity (portions)</Label>
             <Input
               autoFocus
               type="number"
@@ -354,22 +382,24 @@ function AdjustDialog({
 }
 
 function CloseDayDialog({
-  pools,
+  items,
   onClose,
   onDone,
 }: {
-  pools: (Pool & { balance: number })[];
+  items: (BaseItem & { balance: number })[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const [decisions, setDecisions] = useState<Record<string, "carry_forward" | "wastage">>(
-    Object.fromEntries(pools.map((p) => [p.id, "carry_forward" as const])),
+    Object.fromEntries(items.map((i) => [i.pool_id ?? i.id, "carry_forward" as const])),
   );
   const [busy, setBusy] = useState(false);
 
   async function submit() {
     setBusy(true);
-    const payload = pools.map((p) => ({ pool_id: p.id, action: decisions[p.id], qty: p.balance }));
+    const payload = items
+      .filter((i) => i.pool_id)
+      .map((i) => ({ pool_id: i.pool_id!, action: decisions[i.pool_id ?? i.id], qty: i.balance }));
     const { error } = await db.rpc("close_business_day", { _decisions: payload });
     setBusy(false);
     if (error) { toast.error(error.message); return; }
@@ -384,27 +414,27 @@ function CloseDayDialog({
         <DialogHeader>
           <DialogTitle>Close business day</DialogTitle>
         </DialogHeader>
-        {pools.length === 0 ? (
-          <p className="text-sm text-muted-foreground">All pools are empty. Nothing to close.</p>
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">All stock is empty. Nothing to close.</p>
         ) : (
           <div className="space-y-2 max-h-[60vh] overflow-y-auto">
             <p className="text-xs text-muted-foreground">
               Decide what to do with each remaining balance. Carry-forward becomes tomorrow's opening; wastage is written off.
             </p>
-            {pools.map((p) => (
-              <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg border">
+            {items.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 p-3 rounded-lg border">
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{p.name}</div>
-                  <div className="text-xs text-muted-foreground">Balance: <span className="font-semibold">{p.balance}</span> {p.unit ?? ""}</div>
+                  <div className="font-medium truncate">{item.name}</div>
+                  <div className="text-xs text-muted-foreground">Balance: <span className="font-semibold">{item.balance}</span> portions</div>
                 </div>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => setDecisions((d) => ({ ...d, [p.id]: "carry_forward" }))}
-                    className={`px-3 py-2 rounded text-xs font-medium ${decisions[p.id] === "carry_forward" ? "bg-primary text-primary-foreground" : "bg-accent"}`}
+                    onClick={() => setDecisions((d) => ({ ...d, [item.pool_id ?? item.id]: "carry_forward" }))}
+                    className={`px-3 py-2 rounded text-xs font-medium ${decisions[item.pool_id ?? item.id] === "carry_forward" ? "bg-primary text-primary-foreground" : "bg-accent"}`}
                   >Carry</button>
                   <button
-                    onClick={() => setDecisions((d) => ({ ...d, [p.id]: "wastage" }))}
-                    className={`px-3 py-2 rounded text-xs font-medium ${decisions[p.id] === "wastage" ? "bg-danger text-danger-foreground" : "bg-accent"}`}
+                    onClick={() => setDecisions((d) => ({ ...d, [item.pool_id ?? item.id]: "wastage" }))}
+                    className={`px-3 py-2 rounded text-xs font-medium ${decisions[item.pool_id ?? item.id] === "wastage" ? "bg-danger text-danger-foreground" : "bg-accent"}`}
                   >Waste</button>
                 </div>
               </div>
@@ -413,7 +443,7 @@ function CloseDayDialog({
         )}
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || pools.length === 0}>
+          <Button onClick={submit} disabled={busy || items.length === 0}>
             {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Close day
           </Button>
