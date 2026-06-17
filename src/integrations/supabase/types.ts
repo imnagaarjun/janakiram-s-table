@@ -842,7 +842,6 @@ export type Database = {
           name: string
           notify_stock: boolean
           photo_url: string | null
-          pin_hash: string | null
           restaurant_id: string
         }
         Insert: {
@@ -856,7 +855,6 @@ export type Database = {
           name: string
           notify_stock?: boolean
           photo_url?: string | null
-          pin_hash?: string | null
           restaurant_id: string
         }
         Update: {
@@ -870,7 +868,6 @@ export type Database = {
           name?: string
           notify_stock?: boolean
           photo_url?: string | null
-          pin_hash?: string | null
           restaurant_id?: string
         }
         Relationships: [

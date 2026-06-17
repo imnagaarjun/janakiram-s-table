@@ -1,7 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 
+const SEED_ADMIN_EMAIL = "admin@hsj.local";
+const SEED_ADMIN_PASSWORD = "Admin@12345678";
+
 /**
- * Idempotently seeds one restaurant and one Admin user (PIN 12345678) on first run.
+ * Idempotently seeds one restaurant and one Admin user on first run.
  * Safe to call repeatedly — it only creates if no restaurant exists.
  */
 export const ensureSeed = createServerFn({ method: "POST" }).handler(async () => {
@@ -26,11 +29,9 @@ export const ensureSeed = createServerFn({ method: "POST" }).handler(async () =>
     .single();
   if (rErr || !rest) throw new Error(rErr?.message ?? "Failed to create restaurant");
 
-  const adminEmail = `u-${crypto.randomUUID()}@hsj.local`;
-  const adminPassword = `pwd-${crypto.randomUUID()}`;
   const { data: created, error: uErr } = await supabaseAdmin.auth.admin.createUser({
-    email: adminEmail,
-    password: adminPassword,
+    email: SEED_ADMIN_EMAIL,
+    password: SEED_ADMIN_PASSWORD,
     email_confirm: true,
   });
   if (uErr || !created.user) throw new Error(uErr?.message ?? "Failed to create user");
@@ -40,7 +41,7 @@ export const ensureSeed = createServerFn({ method: "POST" }).handler(async () =>
     id: userId,
     restaurant_id: rest.id,
     name: "Admin",
-    auth_email: adminEmail,
+    auth_email: SEED_ADMIN_EMAIL,
   });
   if (pErr) throw new Error(pErr.message);
 
@@ -50,13 +51,6 @@ export const ensureSeed = createServerFn({ method: "POST" }).handler(async () =>
     role: "admin",
   });
   if (roleErr) throw new Error(roleErr.message);
-
-  // Admin PIN must be 8 digits — insert role first so set_staff_pin allows it
-  const { error: pinErr } = await supabaseAdmin.rpc("set_staff_pin", {
-    _user_id: userId,
-    _pin: "12345678",
-  });
-  if (pinErr) throw new Error(pinErr.message);
 
   return { seeded: true as const };
 });

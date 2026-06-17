@@ -6,7 +6,7 @@ const SyncSchema = z.object({
   itemName: z.string().min(1),
   restaurantId: z.string().uuid(),
   isBase: z.boolean(),
-  baseItemIds: z.array(z.string().uuid()),
+  baseItems: z.array(z.object({ id: z.string().uuid(), qty: z.number().positive() })),
 });
 
 /**
@@ -48,13 +48,13 @@ export const syncItemStockPool = createServerFn({ method: "POST" })
       });
       if (error) throw new Error(error.message);
 
-    } else if (data.baseItemIds.length > 0) {
-      // For each base item, find its pool via its existing recipe and link this item to it
-      for (const baseItemId of data.baseItemIds) {
+    } else if (data.baseItems.length > 0) {
+      // For each base item, find its pool and link this item with the specified qty
+      for (const base of data.baseItems) {
         const { data: baseRecipe } = await supabaseAdmin
           .from("recipes")
           .select("stock_pool_id")
-          .eq("menu_item_id", baseItemId)
+          .eq("menu_item_id", base.id)
           .maybeSingle();
 
         if (!baseRecipe) throw new Error("A selected base item has no stock pool yet — save it first");
@@ -63,7 +63,7 @@ export const syncItemStockPool = createServerFn({ method: "POST" })
           restaurant_id: data.restaurantId,
           menu_item_id: data.itemId,
           stock_pool_id: baseRecipe.stock_pool_id,
-          consume_ratio: 1,
+          consume_ratio: base.qty,
         });
         if (error) throw new Error(error.message);
       }

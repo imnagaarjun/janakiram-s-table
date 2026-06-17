@@ -92,15 +92,15 @@ export function ItemEditor({
     }
     return s;
   });
-  // Stock tracking: is_base = this item IS the counted item; baseItemIds = points to one or more base items
+  // Stock tracking: is_base = this item IS the counted item; baseItems = base items with qty each
   const [isBase, setIsBase] = useState(existing?.is_base ?? false);
-  const [baseItemIds, setBaseItemIds] = useState<string[]>([]);
+  const [baseItems, setBaseItems] = useState<Array<{ id: string; qty: number }>>([]);
   const [baseOptions, setBaseOptions] = useState<BaseOption[]>([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
 
-  // Load available base items and (when editing) which ones this item already links to
+  // Load available base items and (when editing) which ones this item already links to with qty
   const loadBaseOptions = useCallback(async () => {
     const { data: opts } = await db
       .from("menu_items")
@@ -112,22 +112,27 @@ export function ItemEditor({
     setBaseOptions(filtered);
 
     if (existing && filtered.length > 0) {
-      // Find which base items this item currently links to via recipes
+      // Find which base items this item currently links to, and their quantities
       const { data: myRecipes } = await db
         .from("recipes")
-        .select("stock_pool_id")
+        .select("stock_pool_id,consume_ratio")
         .eq("menu_item_id", existing.id);
-      const myPoolIds = new Set((myRecipes ?? []).map((r: { stock_pool_id: string }) => r.stock_pool_id));
-      if (myPoolIds.size > 0) {
+      const myPoolMap = new Map(
+        (myRecipes ?? []).map((r: { stock_pool_id: string; consume_ratio: number }) => [r.stock_pool_id, r.consume_ratio]),
+      );
+      if (myPoolMap.size > 0) {
         const baseIds = filtered.map((o: BaseOption) => o.id);
         const { data: baseRecipes } = await db
           .from("recipes")
           .select("menu_item_id,stock_pool_id")
           .in("menu_item_id", baseIds);
         const selected = (baseRecipes ?? [])
-          .filter((r: { stock_pool_id: string }) => myPoolIds.has(r.stock_pool_id))
-          .map((r: { menu_item_id: string }) => r.menu_item_id);
-        setBaseItemIds(selected);
+          .filter((r: { stock_pool_id: string }) => myPoolMap.has(r.stock_pool_id))
+          .map((r: { menu_item_id: string; stock_pool_id: string }) => ({
+            id: r.menu_item_id,
+            qty: myPoolMap.get(r.stock_pool_id) ?? 1,
+          }));
+        setBaseItems(selected);
       }
     }
   }, [existing?.id]);
@@ -172,7 +177,7 @@ export function ItemEditor({
     setSaving(true);
     try {
       const effectiveIsBase = stockMode === "counted" && isBase;
-      const effectiveBaseItemIds = stockMode === "counted" && !isBase ? baseItemIds : [];
+      const effectiveBaseItems = stockMode === "counted" && !isBase ? baseItems : [];
 
       const payload = {
         restaurant_id: restaurantId,
@@ -232,14 +237,14 @@ export function ItemEditor({
       }
 
       // Pool + recipe sync runs server-side (supabaseAdmin) to bypass RLS on stock_pools.
-      if (stockMode === "counted" && (effectiveIsBase || effectiveBaseItemIds.length > 0)) {
+      if (stockMode === "counted" && (effectiveIsBase || effectiveBaseItems.length > 0)) {
         await syncItemStockPool({
           data: {
             itemId: itemId!,
             itemName: name.trim(),
             restaurantId,
             isBase: effectiveIsBase,
-            baseItemIds: effectiveBaseItemIds,
+            baseItems: effectiveBaseItems,
           },
         });
       } else {
@@ -440,7 +445,7 @@ export function ItemEditor({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => { setIsBase(true); setBaseItemIds([]); }}
+                    onClick={() => { setIsBase(true); setBaseItems([]); }}
                     className={`rounded-xl border p-3 text-left transition-colors ${isBase ? "border-primary bg-primary/5" : "border-border hover:bg-accent/50"}`}
                   >
                     <div className="font-semibold text-sm">This IS a base item</div>
@@ -464,35 +469,58 @@ export function ItemEditor({
 
                 {!isBase && (
                   <div className="space-y-1.5">
-                    <Label className="text-sm">Base items (select one or more)</Label>
+                    <Label className="text-sm">Base items &amp; quantity</Label>
                     {baseOptions.length === 0 ? (
                       <p className="text-xs text-muted-foreground rounded-lg bg-accent/50 px-3 py-2">
                         No base items yet — create one first by setting another item as "This IS a base item".
                       </p>
                     ) : (
-                      <div className="rounded-lg border border-border divide-y max-h-48 overflow-y-auto">
+                      <div className="rounded-lg border border-border divide-y max-h-56 overflow-y-auto">
                         {baseOptions.map((opt) => {
-                          const checked = baseItemIds.includes(opt.id);
+                          const entry = baseItems.find((b) => b.id === opt.id);
+                          const checked = !!entry;
                           return (
-                            <label
+                            <div
                               key={opt.id}
-                              className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-accent/50"
+                              className="flex items-center gap-3 px-3 py-2.5"
                             >
                               <Checkbox
                                 checked={checked}
                                 onCheckedChange={(v) => {
-                                  setBaseItemIds((ids) =>
-                                    v ? [...ids, opt.id] : ids.filter((id) => id !== opt.id),
+                                  setBaseItems((prev) =>
+                                    v
+                                      ? [...prev, { id: opt.id, qty: 1 }]
+                                      : prev.filter((b) => b.id !== opt.id),
                                   );
                                 }}
                               />
-                              <span className="text-sm">{opt.name}</span>
-                            </label>
+                              <span className="text-sm flex-1">{opt.name}</span>
+                              {checked && (
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <span className="text-xs text-muted-foreground">×</span>
+                                  <Input
+                                    type="number"
+                                    min={0.01}
+                                    step={0.01}
+                                    value={entry!.qty}
+                                    onChange={(e) => {
+                                      const q = parseFloat(e.target.value);
+                                      if (!Number.isFinite(q) || q <= 0) return;
+                                      setBaseItems((prev) =>
+                                        prev.map((b) => b.id === opt.id ? { ...b, qty: q } : b),
+                                      );
+                                    }}
+                                    className="h-8 w-20 text-right text-sm"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
                     )}
-                    <p className="text-xs text-muted-foreground">Ordering this item uses 1 portion from each selected base item's stock.</p>
+                    <p className="text-xs text-muted-foreground">Each order consumes the specified quantity from each selected base item's stock.</p>
                   </div>
                 )}
 
