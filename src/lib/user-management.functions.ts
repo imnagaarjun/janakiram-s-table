@@ -244,3 +244,45 @@ export const resetStaffPassword = createServerFn({ method: "POST" })
     // Dev fallback: return the link so admin can share it
     return { sent: false, link: (link as any).properties?.action_link, email: deliverTo };
   });
+
+const UpdateEmailSchema = z.object({
+  userId: z.string().uuid(),
+  email: z.string().email(),
+});
+
+/** Admin-only: update a staff member's login email in both auth.users and profiles. */
+export const updateStaffEmail = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => UpdateEmailSchema.parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const callerRestaurantId = await getCallerRestaurantId(supabaseAdmin as any);
+    const { data: targetProf } = await supabaseAdmin
+      .from("profiles")
+      .select("restaurant_id")
+      .eq("id", data.userId)
+      .single();
+    if (!targetProf || (targetProf as any).restaurant_id !== callerRestaurantId) throw new Error("Forbidden");
+
+    // Ensure the new email isn't already used by another profile
+    const { data: dup } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("auth_email", data.email.toLowerCase())
+      .maybeSingle();
+    if (dup && (dup as any).id !== data.userId) throw new Error("That email is already in use by another account");
+
+    const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(data.userId, {
+      email: data.email.toLowerCase(),
+      email_confirm: true,
+    });
+    if (authErr) throw new Error(authErr.message);
+
+    const { error: profErr } = await (supabaseAdmin.from("profiles") as any)
+      .update({ auth_email: data.email.toLowerCase() })
+      .eq("id", data.userId);
+    if (profErr) throw new Error(profErr.message);
+
+    return { updated: true };
+  });
+
