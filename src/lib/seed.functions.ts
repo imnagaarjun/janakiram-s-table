@@ -38,6 +38,11 @@ export const ensureSeed = createServerFn({ method: "POST" }).handler(async () =>
   let userId: string;
   if (existingAuthUser) {
     userId = existingAuthUser.id;
+    // Ensure the seed password is set on the existing account
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password: SEED_ADMIN_PASSWORD,
+      email_confirm: true,
+    });
   } else {
     const { data: created, error: uErr } = await supabaseAdmin.auth.admin.createUser({
       email: SEED_ADMIN_EMAIL,
