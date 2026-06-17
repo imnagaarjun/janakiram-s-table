@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Upload, X, Trash2 } from "lucide-react";
+import { syncItemStockPool } from "@/lib/stock-pool.functions";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { uploadMenuImage } from "@/lib/menu-storage";
@@ -175,10 +176,10 @@ export function ItemEditor({
       let itemId = existing?.id;
       if (existing) {
         const { error } = await db.from("menu_items").update(payload).eq("id", existing.id);
-        if (error) throw error;
+        if (error) throw new Error(error.message);
       } else {
         const { data, error } = await db.from("menu_items").insert(payload).select().single();
-        if (error) throw error;
+        if (error) throw new Error(error.message);
         itemId = data.id;
       }
       if (!itemId) throw new Error("Save failed");
@@ -210,55 +211,26 @@ export function ItemEditor({
         }
       }
 
-      // Auto-manage the underlying pool + recipe so the ledger math keeps working.
-      await db.from("recipes").delete().eq("menu_item_id", itemId);
-
-      if (stockMode === "counted" && effectiveIsBase) {
-        // Ensure a pool named after this item exists, then link item → pool (1:1)
-        let { data: pool } = await db
-          .from("stock_pools")
-          .select("id")
-          .eq("restaurant_id", restaurantId)
-          .eq("name", name.trim())
-          .maybeSingle();
-        if (!pool) {
-          const ins = await db
-            .from("stock_pools")
-            .insert({ restaurant_id: restaurantId, name: name.trim(), type: "prepared_base", unit: "portion" })
-            .select("id")
-            .single();
-          if (ins.error) throw ins.error;
-          pool = ins.data;
-        }
-        const { error } = await db.from("recipes").insert({
-          restaurant_id: restaurantId,
-          menu_item_id: itemId!,
-          stock_pool_id: pool.id,
-          consume_ratio: 1,
+      // Pool + recipe sync runs server-side (supabaseAdmin) to bypass RLS on stock_pools.
+      if (stockMode === "counted" && (effectiveIsBase || effectiveBaseItemId)) {
+        await syncItemStockPool({
+          data: {
+            itemId: itemId!,
+            itemName: name.trim(),
+            restaurantId,
+            isBase: effectiveIsBase,
+            baseItemId: effectiveBaseItemId,
+          },
         });
-        if (error) throw error;
-      } else if (stockMode === "counted" && effectiveBaseItemId) {
-        // Find the base item's pool via its recipe, then link this item → same pool (1:1)
-        const { data: baseRecipe } = await db
-          .from("recipes")
-          .select("stock_pool_id")
-          .eq("menu_item_id", effectiveBaseItemId)
-          .maybeSingle();
-        if (baseRecipe) {
-          const { error } = await db.from("recipes").insert({
-            restaurant_id: restaurantId,
-            menu_item_id: itemId!,
-            stock_pool_id: baseRecipe.stock_pool_id,
-            consume_ratio: 1,
-          });
-          if (error) throw error;
-        }
+      } else {
+        // unlimited — just wipe recipes (no pool needed)
+        await db.from("recipes").delete().eq("menu_item_id", itemId);
       }
 
       toast.success(existing ? "Updated" : "Created");
       onSaved();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Save failed");
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
