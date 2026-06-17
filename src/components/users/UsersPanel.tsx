@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, UserPlus, Pencil, Check, X, Power, Upload, Trash2, Plus } from "lucide-react";
+import { Loader2, UserPlus, Pencil, Check, X, Power, Upload, Trash2, Plus, Eye, EyeOff, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { useAuth } from "@/contexts/AuthContext";
 import { uploadMenuImage } from "@/lib/menu-storage";
 import { MenuImage } from "@/components/menu/MenuImage";
-import { createStaffUser, updateStaffUser, toggleUserActive, deleteStaffUser } from "@/lib/user-management.functions";
+import { createStaffUser, updateStaffUser, toggleUserActive, deleteStaffUser, resetStaffPassword } from "@/lib/user-management.functions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,14 +41,66 @@ interface StaffRow {
 interface FormState {
   name: string;
   role: string;
-  pin: string;
+  email: string;
+  password: string;
   contactEmail: string;
   canEditPayment?: boolean;
   photoUrl?: string | null;
   notifyStock?: boolean;
 }
 
-const BLANK: FormState = { name: "", role: "waiter", pin: "", contactEmail: "" };
+const BLANK: FormState = { name: "", role: "waiter", email: "", password: "", contactEmail: "" };
+
+function pwStrength(pw: string) {
+  return [pw.length >= 8, /[A-Z]/.test(pw), /[0-9]/.test(pw)].filter(Boolean).length;
+}
+const STRENGTH_LABEL = ["", "Weak", "Fair", "Strong"];
+const STRENGTH_COLOR = ["", "bg-danger", "bg-warning", "bg-success"];
+
+function PasswordField({
+  value,
+  onChange,
+  placeholder,
+  showStrength,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  showStrength?: boolean;
+}) {
+  const [show, setShow] = useState(false);
+  const sc = pwStrength(value);
+  return (
+    <div className="space-y-1">
+      <div className="relative">
+        <Input
+          type={show ? "text" : "password"}
+          autoComplete="new-password"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder ?? "Password"}
+          className="pr-10"
+        />
+        <button
+          type="button"
+          onClick={() => setShow((v) => !v)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          tabIndex={-1}
+        >
+          {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </button>
+      </div>
+      {showStrength && value.length > 0 && (
+        <div className="flex gap-1 mt-1">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className={`h-1 flex-1 rounded-full ${sc >= i ? STRENGTH_COLOR[sc] : "bg-border"}`} />
+          ))}
+          <span className="text-[10px] text-muted-foreground ml-1">{STRENGTH_LABEL[sc]}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Square portrait uploader (reuses the menu storage bucket, "staff" scope). */
 function PhotoPicker({
@@ -105,8 +157,9 @@ export function UsersPanel() {
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<FormState>>({});
-
   const [deleteTarget, setDeleteTarget] = useState<StaffRow | null>(null);
+  const [resetTarget, setResetTarget] = useState<StaffRow | null>(null);
+  const [resetLink, setResetLink] = useState<string | null>(null);
   const [roles, setRoles] = useState<string[]>(DEFAULT_ROLES);
   const [newRole, setNewRole] = useState("");
 
@@ -114,6 +167,7 @@ export function UsersPanel() {
   const callUpdate = useServerFn(updateStaffUser);
   const callToggle = useServerFn(toggleUserActive);
   const callDelete = useServerFn(deleteStaffUser);
+  const callReset = useServerFn(resetStaffPassword);
 
   const load = useCallback(async () => {
     if (!profile) return;
@@ -130,7 +184,6 @@ export function UsersPanel() {
     const roleMap = new Map<string, string>();
     (rolesData ?? []).forEach((r: { user_id: string; role: string }) => roleMap.set(r.user_id, r.role));
 
-    // Build a comprehensive roles list from DB enum values + any in-use roles
     const usedRoles = new Set(roleMap.values());
     setRoles(Array.from(new Set([...DEFAULT_ROLES, ...usedRoles])));
 
@@ -147,17 +200,26 @@ export function UsersPanel() {
 
   async function addUser() {
     if (!profile) return;
-    if (!form.name || !form.pin) { toast.error("Name and PIN are required"); return; }
-    const minPin = form.role === "admin" ? 8 : 4;
-    if (form.pin.length < minPin) { toast.error(`${form.role === "admin" ? "Admin" : "Staff"} PIN must be at least ${minPin} digits`); return; }
-    if (form.role === "admin" && !form.contactEmail) { toast.error("Admin requires a contact email for OTP verification"); return; }
+    if (!form.name || !form.email || !form.password) {
+      toast.error("Name, email, and password are required");
+      return;
+    }
+    if (pwStrength(form.password) < 2) {
+      toast.error("Password must be at least 8 characters with uppercase and a number");
+      return;
+    }
+    if (form.role === "admin" && !form.contactEmail) {
+      toast.error("Admin requires a contact email for OTP verification");
+      return;
+    }
     setSaving(true);
     try {
       const res = await callCreate({
         data: {
           name: form.name,
           role: form.role,
-          pin: form.pin,
+          email: form.email,
+          password: form.password,
           contactEmail: form.contactEmail || undefined,
           photoUrl: form.photoUrl ?? null,
           notifyStock: form.notifyStock ?? false,
@@ -176,6 +238,10 @@ export function UsersPanel() {
   }
 
   async function saveEdit(userId: string) {
+    if (editForm.password && pwStrength(editForm.password) < 2) {
+      toast.error("New password must be at least 8 characters with uppercase and a number");
+      return;
+    }
     setSaving(true);
     try {
       await callUpdate({
@@ -183,7 +249,7 @@ export function UsersPanel() {
           userId,
           name: editForm.name,
           role: editForm.role,
-          pin: editForm.pin || undefined,
+          password: editForm.password || undefined,
           contactEmail: editForm.contactEmail ?? undefined,
           canEditPayment: editForm.canEditPayment,
           photoUrl: editForm.photoUrl,
@@ -219,6 +285,24 @@ export function UsersPanel() {
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete");
+    }
+  }
+
+  async function sendPasswordReset(userId: string) {
+    setSaving(true);
+    try {
+      const res = await callReset({ data: { userId } });
+      if (res.sent) {
+        toast.success(`Reset email sent to ${res.email}`);
+        setResetTarget(null);
+      } else {
+        // Dev mode: show link
+        setResetLink(res.link ?? null);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send reset");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -270,34 +354,40 @@ export function UsersPanel() {
               </Select>
             </div>
             <div>
-              <Label className="block mb-1.5">
-                PIN {form.role === "admin" ? "(8 digits)" : "(4+ digits)"}
-              </Label>
+              <Label className="block mb-1.5">Login email</Label>
               <Input
-                type="password"
-                inputMode="numeric"
-                maxLength={8}
-                value={form.pin}
-                onChange={(e) => setForm((f) => ({ ...f, pin: e.target.value.replace(/\D/g, "") }))}
-                placeholder={form.role === "admin" ? "8-digit PIN" : "4-digit PIN"}
+                type="email"
+                autoComplete="off"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="staff@example.com"
               />
             </div>
             <div>
+              <Label className="block mb-1.5">Password</Label>
+              <PasswordField
+                value={form.password}
+                onChange={(v) => setForm((f) => ({ ...f, password: v }))}
+                placeholder="Min 8 chars, uppercase, number"
+                showStrength
+              />
+            </div>
+            <div className="sm:col-span-2">
               <Label className="block mb-1.5">
-                Contact Email {form.role === "admin" ? "(required for OTP)" : "(optional)"}
+                Contact email {form.role === "admin" ? "(required — for OTP & password reset)" : "(optional — for password reset)"}
               </Label>
               <Input
                 type="email"
                 value={form.contactEmail}
                 onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))}
-                placeholder="user@example.com"
+                placeholder="personal@example.com"
               />
             </div>
           </div>
           <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
             <div>
               <Label className="text-xs">Receive stock alerts</Label>
-              <p className="text-[11px] text-muted-foreground">Gets low-stock and out-of-stock notifications (admins always do).</p>
+              <p className="text-[11px] text-muted-foreground">Gets low-stock and out-of-stock notifications.</p>
             </div>
             <Switch
               checked={form.notifyStock ?? false}
@@ -341,29 +431,27 @@ export function UsersPanel() {
                       </Select>
                     </div>
                     <div>
-                      <Label className="block mb-1 text-xs">New PIN (leave blank to keep)</Label>
-                      <Input
-                        type="password"
-                        inputMode="numeric"
-                        maxLength={8}
-                        value={editForm.pin ?? ""}
-                        onChange={(e) => setEditForm((f) => ({ ...f, pin: e.target.value.replace(/\D/g, "") }))}
-                        placeholder="New PIN"
+                      <Label className="block mb-1 text-xs">New password <span className="text-muted-foreground">(leave blank to keep)</span></Label>
+                      <PasswordField
+                        value={editForm.password ?? ""}
+                        onChange={(v) => setEditForm((f) => ({ ...f, password: v }))}
+                        placeholder="New password"
+                        showStrength
                       />
                     </div>
                     <div>
-                      <Label className="block mb-1 text-xs">Contact Email</Label>
+                      <Label className="block mb-1 text-xs">Contact email</Label>
                       <Input
                         type="email"
                         value={editForm.contactEmail ?? s.contact_email ?? ""}
                         onChange={(e) => setEditForm((f) => ({ ...f, contactEmail: e.target.value }))}
-                        placeholder="Email for OTP"
+                        placeholder="For OTP & password reset"
                       />
                     </div>
                     <div className="sm:col-span-2 flex items-center justify-between rounded-lg border border-border px-3 py-2">
                       <div>
                         <Label className="text-xs">Can change payment mode</Label>
-                        <p className="text-[11px] text-muted-foreground">Lets this user change a settled bill's payment once (cashiers can always do this).</p>
+                        <p className="text-[11px] text-muted-foreground">Lets this user change a settled bill's payment once.</p>
                       </div>
                       <Switch
                         checked={editForm.canEditPayment ?? s.can_edit_payment}
@@ -381,7 +469,7 @@ export function UsersPanel() {
                       />
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button size="sm" onClick={() => saveEdit(s.id)} disabled={saving} className="min-h-[40px]">
                       {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}
                       Save
@@ -403,12 +491,24 @@ export function UsersPanel() {
                       {s.notify_stock && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600">stock alerts</span>}
                       {!s.is_active && <span className="text-xs text-muted-foreground">(inactive)</span>}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {s.contact_email ?? "No contact email"} · Last active: {fmtDate(s.last_active_at)}
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {s.auth_email} · Last active: {fmtDate(s.last_active_at)}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => { setEditId(s.id); setEditForm({ name: s.name, role: s.role, contactEmail: s.contact_email ?? "", canEditPayment: s.can_edit_payment, photoUrl: s.photo_url, notifyStock: s.notify_stock }); }}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9"
+                      title="Send password reset"
+                      onClick={() => setResetTarget(s)}
+                    >
+                      <KeyRound className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => {
+                      setEditId(s.id);
+                      setEditForm({ name: s.name, role: s.role, password: "", contactEmail: s.contact_email ?? "", canEditPayment: s.can_edit_payment, photoUrl: s.photo_url, notifyStock: s.notify_stock });
+                    }}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
@@ -421,15 +521,15 @@ export function UsersPanel() {
                       <Power className="h-4 w-4" />
                     </Button>
                     {s.id !== profile?.id && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 text-danger"
-                      onClick={() => setDeleteTarget(s)}
-                      title="Delete user"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-danger"
+                        onClick={() => setDeleteTarget(s)}
+                        title="Delete user"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -461,6 +561,7 @@ export function UsersPanel() {
         </div>
       </div>
 
+      {/* Delete confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -474,6 +575,32 @@ export function UsersPanel() {
             <AlertDialogAction onClick={() => deleteTarget && removeUser(deleteTarget.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Password reset confirmation */}
+      <AlertDialog open={!!resetTarget} onOpenChange={(v) => { if (!v) { setResetTarget(null); setResetLink(null); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send password reset — {resetTarget?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {resetTarget?.contact_email
+                ? `A reset link will be sent to ${resetTarget.contact_email}.`
+                : "No contact email set. A reset link will be generated for you to share manually."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {resetLink && (
+            <div className="text-xs bg-accent rounded p-3 break-all select-all font-mono">{resetLink}</div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {!resetLink && (
+              <AlertDialogAction onClick={() => resetTarget && sendPasswordReset(resetTarget.id)} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                {resetTarget?.contact_email ? "Send reset email" : "Generate link"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

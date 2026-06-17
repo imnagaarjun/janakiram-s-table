@@ -1,14 +1,16 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Loader2, Delete, LogIn } from "lucide-react";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { pinLogin } from "@/lib/auth-pin.functions";
 import { ensureSeed } from "@/lib/seed.functions";
 import { StatusPill } from "@/components/StatusPill";
 import { AdminOtpDialog } from "@/components/auth/AdminOtpDialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -18,11 +20,12 @@ export const Route = createFileRoute("/auth")({
 function AuthPage() {
   const { userId, loading, refresh, signOut } = useAuth();
   const navigate = useNavigate();
-  const [pin, setPin] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [seedHint, setSeedHint] = useState<string | null>(null);
   const [otpState, setOtpState] = useState<{ userId: string; contactEmail: string | null } | null>(null);
-  const callPinLogin = useServerFn(pinLogin);
   const callSeed = useServerFn(ensureSeed);
   const seededRef = useRef(false);
 
@@ -35,49 +38,55 @@ function AuthPage() {
     seededRef.current = true;
     callSeed()
       .then((r) => {
-        if (r.seeded) setSeedHint("First-time setup complete. Default Admin PIN: 12345678");
+        if (r.seeded) setSeedHint("First-time setup complete. Admin email: admin@hsj.local · Password: Admin@12345678");
       })
       .catch((e) => console.error("seed failed", e));
   }, [callSeed]);
 
-  async function submit(value: string) {
-    if (busy) return;
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy || !email.trim() || !password) return;
     setBusy(true);
     try {
-      const result = await callPinLogin({ data: { pin: value } });
-      const { error } = await supabase.auth.verifyOtp({ token_hash: result.token_hash, type: "magiclink" });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
       if (error) throw error;
       await refresh();
 
-      if (result.needsOtp && result.userId) {
-        setOtpState({ userId: result.userId, contactEmail: result.contactEmail });
-        return;
+      // Check if admin OTP is needed (admin + inactive 12h+)
+      const userId = data.user?.id;
+      if (userId) {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("contact_email,last_active_at")
+          .eq("id", userId)
+          .single();
+        const { data: rolesData } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userId);
+        const isAdmin = (rolesData ?? []).some((r: { role: string }) => r.role === "admin");
+        const lastActive = prof?.last_active_at ? new Date(prof.last_active_at) : null;
+        const inactiveTooLong = !lastActive || Date.now() - lastActive.getTime() > 12 * 60 * 60 * 1000;
+        if (isAdmin && inactiveTooLong) {
+          setOtpState({ userId, contactEmail: prof?.contact_email ?? null });
+          setBusy(false);
+          return;
+        }
       }
 
       toast.success("Signed in");
       navigate({ to: "/", replace: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Login failed";
-      toast.error(msg);
-      setPin("");
+      // Normalise Supabase error message for users
+      toast.error(msg.includes("Invalid login") ? "Invalid email or password" : msg);
     } finally {
       setBusy(false);
     }
   }
-
-  function press(d: string) {
-    if (busy) return;
-    const next = (pin + d).slice(0, 8);
-    setPin(next);
-    if (next.length === 8) submit(next);
-  }
-
-  function back() {
-    if (busy) return;
-    setPin((p) => p.slice(0, -1));
-  }
-
-  const pinDots = Math.max(4, pin.length + (pin.length < 8 ? 0 : 0));
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
@@ -95,7 +104,8 @@ function AuthPage() {
           onCancel={async () => {
             setOtpState(null);
             await signOut();
-            setPin("");
+            setEmail("");
+            setPassword("");
           }}
         />
       )}
@@ -103,67 +113,60 @@ function AuthPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-foreground">Hotel Sri Janakiram</h1>
-          <p className="text-sm text-muted-foreground mt-1">Enter your PIN</p>
+          <p className="text-sm text-muted-foreground mt-1">Sign in to continue</p>
         </div>
 
-        {/* PIN dots — 4 to 8 */}
-        <div className="flex justify-center gap-2 mb-8" aria-label="PIN entry">
-          {Array.from({ length: Math.max(4, pin.length === 8 ? 8 : pin.length < 4 ? 4 : pin.length) }, (_, i) => (
-            <div
-              key={i}
-              className={`h-12 w-10 rounded-xl border-2 flex items-center justify-center text-xl font-bold transition-all ${
-                pin.length > i
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-border bg-surface text-muted-foreground"
-              }`}
-            >
-              {pin.length > i ? "•" : ""}
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <Label className="block mb-1.5">Email</Label>
+            <Input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <Label className="block mb-1.5">Password</Label>
+            <div className="relative">
+              <Input
+                type={showPw ? "text" : "password"}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                tabIndex={-1}
+                aria-label={showPw ? "Hide password" : "Show password"}
+              >
+                {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
-          ))}
-        </div>
+          </div>
 
-        <div className="grid grid-cols-3 gap-3">
-          {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-            <button
-              key={d}
-              onClick={() => press(d)}
-              disabled={busy}
-              className="h-16 rounded-xl bg-surface border border-border text-2xl font-semibold text-foreground hover:bg-accent active:scale-95 transition disabled:opacity-50"
-            >
-              {d}
-            </button>
-          ))}
-          <button
-            onClick={back}
-            disabled={busy || pin.length === 0}
-            className="h-16 rounded-xl bg-surface border border-border flex items-center justify-center text-foreground hover:bg-accent active:scale-95 transition disabled:opacity-50"
-            aria-label="Delete"
-          >
-            <Delete className="h-6 w-6" />
-          </button>
-          <button
-            onClick={() => press("0")}
-            disabled={busy}
-            className="h-16 rounded-xl bg-surface border border-border text-2xl font-semibold text-foreground hover:bg-accent active:scale-95 transition disabled:opacity-50"
-          >
-            0
-          </button>
-          <button
-            onClick={() => pin.length >= 4 && submit(pin)}
-            disabled={busy || pin.length < 4}
-            className="h-16 rounded-xl bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 active:scale-95 transition disabled:opacity-40"
-            aria-label="Login"
-          >
-            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogIn className="h-5 w-5" />}
-          </button>
-        </div>
+          <div className="flex justify-end">
+            <Link to="/auth/forgot-password" className="text-xs text-primary hover:underline">
+              Forgot password?
+            </Link>
+          </div>
 
-        <p className="mt-4 text-center text-xs text-muted-foreground">
-          Staff: 4-digit PIN · Admin: 8-digit PIN
-        </p>
+          <Button type="submit" className="w-full min-h-[48px] text-base" disabled={busy || !email.trim() || !password}>
+            {busy ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
+            Sign in
+          </Button>
+        </form>
 
         {seedHint && (
-          <div className="mt-4 text-center text-xs text-muted-foreground bg-accent rounded-lg p-3">
+          <div className="mt-6 text-center text-xs text-muted-foreground bg-accent rounded-lg p-3">
             {seedHint}
           </div>
         )}
