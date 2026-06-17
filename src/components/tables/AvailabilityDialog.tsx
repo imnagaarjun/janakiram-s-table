@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { db } from "@/lib/db";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +32,12 @@ function levelFor(r: Row): Level {
   return "green";
 }
 
+const LEVEL_LABEL: Record<Level, string> = {
+  green: "In stock",
+  yellow: "Low stock",
+  red: "Out of stock",
+};
+
 const DOT: Record<Level, string> = {
   green: "bg-emerald-500",
   yellow: "bg-amber-500",
@@ -54,18 +60,24 @@ export function AvailabilityDialog({ open, onOpenChange }: { open: boolean; onOp
     setLoading(false);
   }, []);
 
+  const realtimeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedLoad = useCallback(() => {
+    if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
+    realtimeTimer.current = setTimeout(() => load(), 400);
+  }, [load]);
+
   useEffect(() => {
     if (!open) return;
     load();
-    // Live-refresh when stock moves.
     const ch = supabase
       .channel("availability-popup")
-      .on("postgres_changes", { event: "*", schema: "public", table: "stock_ledger" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock_ledger" }, () => debouncedLoad())
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
+      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
     };
-  }, [open, load]);
+  }, [open, load, debouncedLoad]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, { name: string; items: Row[] }>();
@@ -90,10 +102,17 @@ export function AvailabilityDialog({ open, onOpenChange }: { open: boolean; onOp
         </DialogHeader>
 
         {/* Legend */}
-        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-full ${DOT.green}`} /> In stock</span>
-          <span className="inline-flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-full ${DOT.yellow}`} /> Low (≤ benchmark)</span>
-          <span className="inline-flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-full ${DOT.red}`} /> Out</span>
+        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground" role="list" aria-label="Stock level legend">
+          {(["green", "yellow", "red"] as Level[]).map((lvl) => (
+            <span key={lvl} className="inline-flex items-center gap-1.5" role="listitem">
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${DOT[lvl]}`}
+                role="img"
+                aria-label={LEVEL_LABEL[lvl]}
+              />
+              {lvl === "yellow" ? `${LEVEL_LABEL[lvl]} (≤ benchmark)` : LEVEL_LABEL[lvl]}
+            </span>
+          ))}
         </div>
 
         {loading && rows.length === 0 ? (
@@ -110,13 +129,21 @@ export function AvailabilityDialog({ open, onOpenChange }: { open: boolean; onOp
                 <div className="rounded-xl border border-border divide-y divide-border overflow-hidden">
                   {g.items.map((r) => {
                     const lvl = levelFor(r);
+                    const qtyLabel = r.is_86 ? "86'd" : r.stock_mode === "unlimited" ? "unlimited" : String(r.available);
                     return (
                       <div key={r.item_id} className="flex items-center justify-between px-3 py-2 text-sm">
                         <span className="inline-flex items-center gap-2 min-w-0">
-                          <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${DOT[lvl]}`} />
-                          <span className="truncate">{r.name}</span>
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full shrink-0 ${DOT[lvl]}`}
+                            role="img"
+                            aria-label={LEVEL_LABEL[lvl]}
+                          />
+                          <span className="truncate" title={r.name}>{r.name}</span>
                         </span>
-                        <span className={`font-semibold tabular-nums ${TEXT[lvl]}`}>
+                        <span
+                          className={`font-semibold tabular-nums ${TEXT[lvl]}`}
+                          aria-label={`${LEVEL_LABEL[lvl]}: ${qtyLabel}`}
+                        >
                           {r.is_86 ? "86" : r.stock_mode === "unlimited" ? "∞" : r.available}
                         </span>
                       </div>

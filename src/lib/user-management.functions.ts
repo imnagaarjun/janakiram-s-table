@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 
 const AppRoleEnum = z.string().min(1);
@@ -33,10 +34,33 @@ const DeleteSchema = z.object({
   userId: z.string().uuid(),
 });
 
+/** Returns the caller's restaurant_id by validating the Bearer token and looking up their profile. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getCallerRestaurantId(supabaseAdmin: any): Promise<string> {
+  const req = getRequest();
+  const token = req?.headers?.get("authorization")?.replace("Bearer ", "") ?? "";
+  if (!token) throw new Error("Unauthorized");
+
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) throw new Error("Unauthorized");
+
+  const { data: prof } = await supabaseAdmin.from("profiles").select("restaurant_id").eq("id", user.id).single();
+  if (!prof) throw new Error("Caller profile not found");
+  return prof.restaurant_id as string;
+}
+
 export const createStaffUser = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => CreateSchema.parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const callerRestaurantId = await getCallerRestaurantId(supabaseAdmin as any);
+    if (data.restaurantId !== callerRestaurantId) throw new Error("Forbidden");
 
     // Prevent duplicate staff: same name (case-insensitive) within this
     // restaurant, or a reused contact email.
@@ -69,7 +93,7 @@ export const createStaffUser = createServerFn({ method: "POST" })
     if (uErr || !created.user) throw new Error(uErr?.message ?? "Failed to create auth user");
     const userId = created.user.id;
 
-    const { error: pErr } = await supabaseAdmin.from("profiles").insert({
+    const { error: pErr } = await (supabaseAdmin.from("profiles") as any).insert({
       id: userId,
       restaurant_id: data.restaurantId,
       name: data.name,
@@ -81,14 +105,14 @@ export const createStaffUser = createServerFn({ method: "POST" })
     });
     if (pErr) throw new Error(pErr.message);
 
-    const { error: rErr } = await supabaseAdmin.from("user_roles").insert({
+    const { error: rErr } = await (supabaseAdmin.from("user_roles") as any).insert({
       user_id: userId,
       restaurant_id: data.restaurantId,
       role: data.role,
     });
     if (rErr) throw new Error(rErr.message);
 
-    const { error: pinErr } = await supabaseAdmin.rpc("set_staff_pin", {
+    const { error: pinErr } = await (supabaseAdmin as any).rpc("set_staff_pin", {
       _user_id: userId,
       _pin: data.pin,
     });
@@ -102,6 +126,11 @@ export const updateStaffUser = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+    const callerRestaurantId = await getCallerRestaurantId(supabaseAdmin as any);
+    const { data: targetProf } = await supabaseAdmin
+      .from("profiles").select("restaurant_id").eq("id", data.userId).single();
+    if (!targetProf || (targetProf as any).restaurant_id !== callerRestaurantId) throw new Error("Forbidden");
+
     if (
       data.name !== undefined || data.contactEmail !== undefined ||
       data.canEditPayment !== undefined || data.photoUrl !== undefined ||
@@ -113,29 +142,22 @@ export const updateStaffUser = createServerFn({ method: "POST" })
       if (data.canEditPayment !== undefined) updates.can_edit_payment = data.canEditPayment;
       if (data.photoUrl !== undefined) updates.photo_url = data.photoUrl;
       if (data.notifyStock !== undefined) updates.notify_stock = data.notifyStock;
-      const { error } = await supabaseAdmin.from("profiles").update(updates).eq("id", data.userId);
+      const { error } = await (supabaseAdmin.from("profiles") as any).update(updates).eq("id", data.userId);
       if (error) throw new Error(error.message);
     }
 
     if (data.role !== undefined) {
       await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);
-      const { data: prof } = await supabaseAdmin
-        .from("profiles")
-        .select("restaurant_id")
-        .eq("id", data.userId)
-        .single();
-      if (prof) {
-        const { error } = await supabaseAdmin.from("user_roles").insert({
-          user_id: data.userId,
-          restaurant_id: prof.restaurant_id,
-          role: data.role,
-        });
-        if (error) throw new Error(error.message);
-      }
+      const { error } = await (supabaseAdmin.from("user_roles") as any).insert({
+        user_id: data.userId,
+        restaurant_id: callerRestaurantId,
+        role: data.role,
+      });
+      if (error) throw new Error(error.message);
     }
 
     if (data.pin !== undefined) {
-      const { error } = await supabaseAdmin.rpc("set_staff_pin", {
+      const { error } = await (supabaseAdmin as any).rpc("set_staff_pin", {
         _user_id: data.userId,
         _pin: data.pin,
       });
@@ -149,8 +171,13 @@ export const toggleUserActive = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => ToggleSchema.parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
-      .from("profiles")
+
+    const callerRestaurantId = await getCallerRestaurantId(supabaseAdmin as any);
+    const { data: targetProf } = await supabaseAdmin
+      .from("profiles").select("restaurant_id").eq("id", data.userId).single();
+    if (!targetProf || (targetProf as any).restaurant_id !== callerRestaurantId) throw new Error("Forbidden");
+
+    const { error } = await (supabaseAdmin.from("profiles") as any)
       .update({ is_active: data.isActive })
       .eq("id", data.userId);
     if (error) throw new Error(error.message);
@@ -161,6 +188,12 @@ export const deleteStaffUser = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => DeleteSchema.parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const callerRestaurantId = await getCallerRestaurantId(supabaseAdmin as any);
+    const { data: targetProf } = await supabaseAdmin
+      .from("profiles").select("restaurant_id").eq("id", data.userId).single();
+    if (!targetProf || (targetProf as any).restaurant_id !== callerRestaurantId) throw new Error("Forbidden");
+
     await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);
     await supabaseAdmin.from("profiles").delete().eq("id", data.userId);
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);

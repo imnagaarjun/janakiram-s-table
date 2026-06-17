@@ -827,26 +827,44 @@ export type Database = {
       profiles: {
         Row: {
           auth_email: string
+          can_edit_payment: boolean | null
+          contact_email: string | null
           created_at: string
           id: string
+          is_active: boolean
+          last_active_at: string | null
           name: string
-          pin: string
+          notify_stock: boolean
+          photo_url: string | null
+          pin_hash: string | null
           restaurant_id: string
         }
         Insert: {
           auth_email: string
+          can_edit_payment?: boolean | null
+          contact_email?: string | null
           created_at?: string
           id: string
+          is_active?: boolean
+          last_active_at?: string | null
           name: string
-          pin: string
+          notify_stock?: boolean
+          photo_url?: string | null
+          pin_hash?: string | null
           restaurant_id: string
         }
         Update: {
           auth_email?: string
+          can_edit_payment?: boolean | null
+          contact_email?: string | null
           created_at?: string
           id?: string
+          is_active?: boolean
+          last_active_at?: string | null
           name?: string
-          pin?: string
+          notify_stock?: boolean
+          photo_url?: string | null
+          pin_hash?: string | null
           restaurant_id?: string
         }
         Relationships: [
@@ -1223,19 +1241,19 @@ export type Database = {
         Row: {
           id: string
           restaurant_id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: string
           user_id: string
         }
         Insert: {
           id?: string
           restaurant_id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: string
           user_id: string
         }
         Update: {
           id?: string
           restaurant_id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: string
           user_id?: string
         }
         Relationships: [
@@ -1519,11 +1537,23 @@ export type Database = {
       current_restaurant_id: { Args: never; Returns: string }
       has_role: {
         Args: {
-          _role: Database["public"]["Enums"]["app_role"]
+          _role: string
           _user_id: string
         }
         Returns: boolean
       }
+      menu_availability: { Args: Record<never, never>; Returns: Json[] }
+      pin_login_lookup: {
+        Args: { _pin: string }
+        Returns: Json
+      }
+      request_admin_otp: { Args: { _user_id: string }; Returns: Json }
+      set_staff_pin: {
+        Args: { _pin: string; _user_id: string }
+        Returns: undefined
+      }
+      verify_admin_otp: { Args: { _otp: string; _user_id: string }; Returns: Json }
+      check_stock_alerts: { Args: Record<never, never>; Returns: undefined }
       pool_qty: { Args: { _pool_id: string }; Returns: number }
       record_vendor_payment: {
         Args: {
@@ -1600,7 +1630,6 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "manager" | "cashier" | "waiter" | "kitchen"
       cashflow_sign: "add" | "subtract"
       cashflow_source:
         | "manual"
@@ -1760,7 +1789,6 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "manager", "cashier", "waiter", "kitchen"],
       cashflow_sign: ["add", "subtract"],
       cashflow_source: [
         "manual",
