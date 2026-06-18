@@ -207,7 +207,7 @@ export function UsersPanel() {
       toast.error("Name, email, and password are required");
       return;
     }
-    if (pwStrength(form.password) < 2) {
+    if (pwStrength(form.password) < 3) {
       toast.error("Password must be at least 8 characters with uppercase and a number");
       return;
     }
@@ -234,14 +234,19 @@ export function UsersPanel() {
       setForm(BLANK);
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to create user");
+      let msg = "Failed to create user";
+      if (e instanceof Error) {
+        try { const p = JSON.parse(e.message); msg = Array.isArray(p) ? (p[0]?.message ?? e.message) : e.message; }
+        catch { msg = e.message; }
+      }
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
   }
 
   async function saveEdit(userId: string) {
-    if (editForm.password && pwStrength(editForm.password) < 2) {
+    if (editForm.password && pwStrength(editForm.password) < 3) {
       toast.error("New password must be at least 8 characters with uppercase and a number");
       return;
     }
@@ -264,7 +269,12 @@ export function UsersPanel() {
       setEditForm({});
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update");
+      let msg = "Failed to update";
+      if (e instanceof Error) {
+        try { const p = JSON.parse(e.message); msg = Array.isArray(p) ? (p[0]?.message ?? e.message) : e.message; }
+        catch { msg = e.message; }
+      }
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
