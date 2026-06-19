@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { uploadMenuImage } from "@/lib/menu-storage";
 import { MenuImage } from "@/components/menu/MenuImage";
 import { createStaffUser, updateStaffUser, toggleUserActive, deleteStaffUser, resetStaffPassword, updateStaffEmail } from "@/lib/user-management.functions";
+import { PERMISSION_AREAS, resolvePermissions } from "@/lib/permissions";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +37,7 @@ interface StaffRow {
   photo_url: string | null;
   notify_stock: boolean;
   role: string;
+  permissions: Record<string, boolean> | null;
 }
 
 interface FormState {
@@ -162,6 +164,8 @@ export function UsersPanel() {
   const [resetLink, setResetLink] = useState<string | null>(null);
   const [emailChanges, setEmailChanges] = useState<Record<string, string>>({});
   const [emailSaving, setEmailSaving] = useState<string | null>(null);
+  const [permsOverride, setPermsOverride] = useState<Record<string, boolean>>({});
+  const [permsReset, setPermsReset] = useState(false);
   const [roles, setRoles] = useState<string[]>(DEFAULT_ROLES);
   const [newRole, setNewRole] = useState("");
 
@@ -176,7 +180,7 @@ export function UsersPanel() {
     if (!profile) return;
     const { data: profiles } = await db
       .from("profiles")
-      .select("id,name,auth_email,contact_email,is_active,last_active_at,can_edit_payment,photo_url,notify_stock")
+      .select("id,name,auth_email,contact_email,is_active,last_active_at,can_edit_payment,photo_url,notify_stock,permissions")
       .eq("restaurant_id", profile.restaurant_id)
       .order("name");
     const { data: rolesData } = await db
@@ -262,11 +266,14 @@ export function UsersPanel() {
           canEditPayment: editForm.canEditPayment,
           photoUrl: editForm.photoUrl,
           notifyStock: editForm.notifyStock,
+          permissions: permsReset ? null : (Object.keys(permsOverride).length > 0 ? permsOverride : undefined),
         },
       });
       toast.success("Updated");
       setEditId(null);
       setEditForm({});
+      setPermsOverride({});
+      setPermsReset(false);
       await load();
     } catch (e) {
       let msg = "Failed to update";
@@ -349,7 +356,7 @@ export function UsersPanel() {
     return new Date(s).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   }
 
-  if (loading) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
+  if (loading || !profile) return <div className="p-6 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>;
 
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto">
@@ -364,7 +371,7 @@ export function UsersPanel() {
         <div className="rounded-2xl border border-border bg-surface p-4 mb-6 space-y-4">
           <h2 className="font-semibold text-base">New Staff User</h2>
           <PhotoPicker
-            restaurantId={profile!.restaurant_id}
+            restaurantId={profile.restaurant_id}
             value={form.photoUrl}
             onChange={(p) => setForm((f) => ({ ...f, photoUrl: p }))}
           />
@@ -441,7 +448,7 @@ export function UsersPanel() {
               {isEditing ? (
                 <div className="space-y-3">
                   <PhotoPicker
-                    restaurantId={profile!.restaurant_id}
+                    restaurantId={profile.restaurant_id}
                     value={editForm.photoUrl ?? s.photo_url}
                     onChange={(p) => setEditForm((f) => ({ ...f, photoUrl: p }))}
                   />
@@ -524,12 +531,74 @@ export function UsersPanel() {
                       />
                     </div>
                   </div>
+                  {/* Permission matrix — not shown for admins (always full access) */}
+                  {(editForm.role ?? s.role) !== "admin" && (() => {
+                    const effectiveRole = editForm.role ?? s.role;
+                    const effectivePerms = resolvePermissions([effectiveRole], permsReset ? null : permsOverride);
+                    return (
+                      <div className="rounded-lg border border-border p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold">Access permissions</span>
+                          <button
+                            type="button"
+                            className="text-[11px] text-primary hover:underline"
+                            onClick={() => { setPermsOverride({}); setPermsReset(true); }}
+                          >
+                            Reset to role defaults
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {PERMISSION_AREAS.map((area) => {
+                            const viewKey = `${area.key}:view`;
+                            const editKey = `${area.key}:edit`;
+                            const canView = effectivePerms.has(viewKey);
+                            const canEdit = area.hasEdit && effectivePerms.has(editKey);
+                            return (
+                              <div key={area.key} className="flex items-center gap-3 py-1 border-b border-border/50 last:border-0">
+                                <span className="text-xs flex-1 text-foreground">{area.label}</span>
+                                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer select-none">
+                                  <Switch
+                                    checked={canView}
+                                    onCheckedChange={(v) => {
+                                      setPermsReset(false);
+                                      setPermsOverride((prev) => {
+                                        const next = { ...prev, [viewKey]: v };
+                                        if (!v && area.hasEdit) next[editKey] = false;
+                                        return next;
+                                      });
+                                    }}
+                                    className="scale-75"
+                                  />
+                                  View
+                                </label>
+                                {area.hasEdit && (
+                                  <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer select-none">
+                                    <Switch
+                                      checked={canEdit}
+                                      disabled={!canView}
+                                      onCheckedChange={(v) => {
+                                        setPermsReset(false);
+                                        setPermsOverride((prev) => ({ ...prev, [editKey]: v }));
+                                      }}
+                                      className="scale-75"
+                                    />
+                                    Edit
+                                  </label>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="flex gap-2 flex-wrap">
                     <Button size="sm" onClick={() => saveEdit(s.id)} disabled={saving} className="min-h-[40px]">
                       {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}
                       Save
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => { setEditId(null); setEditForm({}); }} className="min-h-[40px]">
+                    <Button size="sm" variant="outline" onClick={() => { setEditId(null); setEditForm({}); setPermsOverride({}); setPermsReset(false); }} className="min-h-[40px]">
                       <X className="h-3 w-3 mr-1" /> Cancel
                     </Button>
                   </div>
@@ -563,6 +632,8 @@ export function UsersPanel() {
                     <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => {
                       setEditId(s.id);
                       setEditForm({ name: s.name, role: s.role, password: "", contactEmail: s.contact_email ?? "", canEditPayment: s.can_edit_payment, photoUrl: s.photo_url, notifyStock: s.notify_stock });
+                      setPermsOverride(s.permissions ?? {});
+                      setPermsReset(false);
                     }}>
                       <Pencil className="h-4 w-4" />
                     </Button>

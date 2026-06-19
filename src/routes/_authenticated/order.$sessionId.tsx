@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { RoleGuard } from "@/components/RoleGuard";
+import { AccessGuard } from "@/components/AccessGuard";
 import { OrderScreen } from "@/components/order/OrderScreen";
 
 export const Route = createFileRoute("/_authenticated/order/$sessionId")({
@@ -9,8 +9,8 @@ export const Route = createFileRoute("/_authenticated/order/$sessionId")({
 function Page() {
   const { sessionId } = Route.useParams();
   return (
-    <RoleGuard allow={["admin", "manager", "waiter", "cashier"]}>
+    <AccessGuard perm="tables:view">
       <OrderScreen sessionId={sessionId} />
-    </RoleGuard>
+    </AccessGuard>
   );
 }

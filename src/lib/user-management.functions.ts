@@ -30,6 +30,7 @@ const UpdateSchema = z.object({
   canEditPayment: z.boolean().optional(),
   photoUrl: z.string().nullable().optional(),
   notifyStock: z.boolean().optional(),
+  permissions: z.record(z.string(), z.boolean()).nullable().optional(),
 });
 
 const ToggleSchema = z.object({
@@ -132,7 +133,7 @@ export const updateStaffUser = createServerFn({ method: "POST" })
     if (
       data.name !== undefined || data.contactEmail !== undefined ||
       data.canEditPayment !== undefined || data.photoUrl !== undefined ||
-      data.notifyStock !== undefined
+      data.notifyStock !== undefined || data.permissions !== undefined
     ) {
       const updates: Record<string, unknown> = {};
       if (data.name !== undefined) updates.name = data.name;
@@ -140,6 +141,7 @@ export const updateStaffUser = createServerFn({ method: "POST" })
       if (data.canEditPayment !== undefined) updates.can_edit_payment = data.canEditPayment;
       if (data.photoUrl !== undefined) updates.photo_url = data.photoUrl;
       if (data.notifyStock !== undefined) updates.notify_stock = data.notifyStock;
+      if (data.permissions !== undefined) updates.permissions = data.permissions;
       const { error } = await (supabaseAdmin.from("profiles") as any).update(updates).eq("id", data.userId);
       if (error) throw new Error(error.message);
     }

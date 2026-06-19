@@ -32,22 +32,24 @@ const ALL_NAV: NavItem[] = [
   { to: "/more", label: "More", icon: MoreHorizontal, roles: ["admin", "manager", "cashier", "waiter", "kitchen"] },
 ];
 
-function visibleNav(roles: AppRole[], enabledFn: (m: string) => boolean): NavItem[] {
-  let items: NavItem[];
-  if (roles.includes("admin") || roles.includes("manager")) items = ALL_NAV;
-  else if (roles.includes("kitchen") && roles.length === 1) {
-    items = ALL_NAV.filter((n) => n.to === "/kds" || n.to === "/more");
-  } else if (roles.includes("cashier") && !roles.includes("waiter")) {
-    items = ALL_NAV.filter((n) => ["/tables", "/menu", "/kds", "/reports", "/more"].includes(n.to));
-  } else {
-    items = ALL_NAV.filter((n) => ["/tables", "/menu", "/reports", "/more"].includes(n.to));
-  }
-  return items.filter((n) => !n.module || enabledFn(n.module));
+function visibleNav(perms: Set<string>, enabledFn: (m: string) => boolean): NavItem[] {
+  const PERM_MAP: Record<string, string> = {
+    "/tables": "tables:view",
+    "/menu": "menu:view",
+    "/kds": "kds:view",
+    "/reports": "reports:view",
+  };
+  return ALL_NAV.filter((n) => {
+    const permKey = PERM_MAP[n.to];
+    if (permKey && !perms.has(permKey)) return false;
+    if (n.module && !enabledFn(n.module)) return false;
+    return true;
+  });
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
   const mode = useDeviceMode();
-  const { roles, profile } = useAuth();
+  const { roles, profile, permissions } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [modules, setModules] = useState<Map<string, boolean>>(new Map());
 
@@ -65,9 +67,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => { loadModules(); }, [loadModules]);
 
   const enabled = useCallback((module: string) => modules.size === 0 || modules.get(module) !== false, [modules]);
-  const nav = visibleNav(roles, enabled);
+  const nav = visibleNav(permissions, enabled);
 
-  const isAdminOrManager = roles.includes("admin") || roles.includes("manager");
+  const { can } = useAuth();
   const isAdmin = roles.includes("admin");
 
   const NavLink = ({ to, icon: Icon, label }: { to: string; icon: typeof LayoutGrid; label: string }) => {
@@ -101,16 +103,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <div className="text-xs text-muted-foreground">{roles.join(", ") || "—"}</div>
               </div>
               {nav.map((n) => <NavLink key={n.to} to={n.to} icon={n.icon} label={n.label} />)}
-              {isAdminOrManager && (
+              {(can("stock:view") || can("waiters:view")) && (
                 <div className="mt-auto flex flex-col gap-1">
-                  {enabled("stock") && <NavLink to="/stock" icon={Boxes} label="Daily Stock" />}
-                  {enabled("waiters") && <NavLink to="/waiters" icon={Users} label="Waiters" />}
+                  {can("stock:view") && enabled("stock") && <NavLink to="/stock" icon={Boxes} label="Daily Stock" />}
+                  {can("waiters:view") && enabled("waiters") && <NavLink to="/waiters" icon={Users} label="Waiters" />}
                 </div>
               )}
-              {isAdmin && (
+              {(can("users:view") || can("settings:view")) && (
                 <div className="flex flex-col gap-1">
-                  {enabled("users") && <NavLink to="/users" icon={UserCog} label="Users" />}
-                  <NavLink to="/settings" icon={Settings} label="Settings" />
+                  {can("users:view") && enabled("users") && <NavLink to="/users" icon={UserCog} label="Users" />}
+                  {can("settings:view") && <NavLink to="/settings" icon={Settings} label="Settings" />}
                 </div>
               )}
             </aside>

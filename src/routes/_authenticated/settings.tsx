@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { RoleGuard } from "@/components/RoleGuard";
+import { AccessGuard } from "@/components/AccessGuard";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/lib/db";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,9 +29,9 @@ export const Route = createFileRoute("/_authenticated/settings")({ component: Pa
 
 function Page() {
   return (
-    <RoleGuard allow={["admin"]}>
+    <AccessGuard perm="settings:view">
       <SettingsInner />
-    </RoleGuard>
+    </AccessGuard>
   );
 }
 

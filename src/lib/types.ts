@@ -10,6 +10,9 @@ export interface Profile {
   is_active: boolean;
   last_active_at: string | null;
   can_edit_payment?: boolean;
+  notify_stock?: boolean;
+  photo_url?: string | null;
+  permissions?: Record<string, boolean> | null;
 }
 
 export interface Restaurant {
