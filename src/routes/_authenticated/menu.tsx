@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { AccessGuard } from "@/components/AccessGuard";
 import { CategoriesPanel } from "@/components/menu/CategoriesPanel";
 import { ItemsPanel } from "@/components/menu/ItemsPanel";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -9,9 +9,9 @@ export const Route = createFileRoute("/_authenticated/menu")({ component: Page }
 
 function Page() {
   return (
-    <RoleGuard allow={["admin", "manager"]}>
+    <AccessGuard perm="menu:view">
       <MenuInner />
-    </RoleGuard>
+    </AccessGuard>
   );
 }
 

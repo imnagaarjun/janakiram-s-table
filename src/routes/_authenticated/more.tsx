@@ -1,12 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Settings, LogOut, User, Boxes, Users, Truck, ShoppingCart, Wallet, Calculator } from "lucide-react";
+import { Settings, LogOut, User, Boxes, Users, Truck, ShoppingCart, Wallet, Calculator, UserCog } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/more")({ component: Page });
 
 function Page() {
-  const { profile, roles, hasRole, signOut } = useAuth();
+  const { profile, roles, can, signOut } = useAuth();
   const navigate = useNavigate();
 
   async function handleLogout() {
@@ -29,65 +29,50 @@ function Page() {
       </div>
 
       <div className="rounded-2xl border border-border bg-surface overflow-hidden shadow-sm">
-        {hasRole("admin", "manager") && (
-          <Link
-            to="/stock"
-            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
-          >
+        {can("stock:view") && (
+          <Link to="/stock" className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border">
             <Boxes className="h-5 w-5 text-muted-foreground" />
             <span className="flex-1 font-medium">Daily stock</span>
           </Link>
         )}
-        {hasRole("admin", "manager") && (
-          <Link
-            to="/waiters"
-            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
-          >
+        {can("waiters:view") && (
+          <Link to="/waiters" className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border">
             <Users className="h-5 w-5 text-muted-foreground" />
             <span className="flex-1 font-medium">Waiters & allocation</span>
           </Link>
         )}
-        {hasRole("admin", "manager") && (
-          <Link
-            to="/vendors"
-            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
-          >
+        {can("vendors:view") && (
+          <Link to="/vendors" className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border">
             <Truck className="h-5 w-5 text-muted-foreground" />
             <span className="flex-1 font-medium">Vendors & products</span>
           </Link>
         )}
-        {hasRole("admin", "manager", "cashier") && (
-          <Link
-            to="/purchases"
-            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
-          >
+        {can("purchases:view") && (
+          <Link to="/purchases" className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border">
             <ShoppingCart className="h-5 w-5 text-muted-foreground" />
             <span className="flex-1 font-medium">Daily purchases</span>
           </Link>
         )}
-        {hasRole("admin", "manager") && (
-          <Link
-            to="/cash-config"
-            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
-          >
+        {can("cash-config:view") && (
+          <Link to="/cash-config" className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border">
             <Wallet className="h-5 w-5 text-muted-foreground" />
             <span className="flex-1 font-medium">Cash reconciliation setup</span>
           </Link>
         )}
-        {hasRole("admin", "manager", "cashier") && (
-          <Link
-            to="/cash-recon"
-            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
-          >
+        {can("cash-recon:view") && (
+          <Link to="/cash-recon" className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border">
             <Calculator className="h-5 w-5 text-muted-foreground" />
             <span className="flex-1 font-medium">Daily cash reconciliation</span>
           </Link>
         )}
-        {hasRole("admin") && (
-          <Link
-            to="/settings"
-            className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border"
-          >
+        {can("users:view") && (
+          <Link to="/users" className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border">
+            <UserCog className="h-5 w-5 text-muted-foreground" />
+            <span className="flex-1 font-medium">Staff users</span>
+          </Link>
+        )}
+        {can("settings:view") && (
+          <Link to="/settings" className="flex items-center gap-3 px-4 py-4 min-h-[56px] hover:bg-accent border-b border-border">
             <Settings className="h-5 w-5 text-muted-foreground" />
             <span className="flex-1 font-medium">Restaurant settings</span>
           </Link>

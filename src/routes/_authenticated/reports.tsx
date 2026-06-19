@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { RoleGuard } from "@/components/RoleGuard";
+import { AccessGuard } from "@/components/AccessGuard";
 import { ReportsHub } from "@/components/reports/ReportsHub";
 
 export const Route = createFileRoute("/_authenticated/reports")({ component: Page });
 
 function Page() {
   return (
-    <RoleGuard allow={["admin", "manager", "cashier", "waiter"]}>
+    <AccessGuard perm="reports:view">
       <ReportsHub />
-    </RoleGuard>
+    </AccessGuard>
   );
 }

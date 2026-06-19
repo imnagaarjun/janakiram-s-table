@@ -1,16 +1,19 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { db } from "@/lib/db";
 import type { AppRole, Profile } from "@/lib/types";
+import { resolvePermissions } from "@/lib/permissions";
 
 interface AuthState {
   loading: boolean;
   userId: string | null;
   profile: Profile | null;
   roles: AppRole[];
+  permissions: Set<string>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   hasRole: (...roles: AppRole[]) => boolean;
+  can: (key: string) => boolean;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -81,13 +84,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserId(null);
   }, []);
 
+  const permissions = useMemo(
+    () => resolvePermissions(roles, profile?.permissions ?? null),
+    [roles, profile],
+  );
+
   const hasRole = useCallback(
     (...needed: AppRole[]) => needed.some((r) => roles.includes(r)),
     [roles],
   );
 
+  const can = useCallback((key: string) => permissions.has(key), [permissions]);
+
   return (
-    <Ctx.Provider value={{ loading, userId, profile, roles, signOut, refresh, hasRole }}>
+    <Ctx.Provider value={{ loading, userId, profile, roles, permissions, signOut, refresh, hasRole, can }}>
       {children}
     </Ctx.Provider>
   );
