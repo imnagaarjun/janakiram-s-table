@@ -59,21 +59,19 @@ async function sendRaw(device, buffer) {
     return;
   }
 
-  // USB: use Windows printer name via raw socket to \\.\printername
-  // escpos-usb on Windows enumerates by USB descriptor. Simpler: use net.createConnection to LPT
-  // Fallback: write raw bytes through a named pipe / Windows spooler via child_process
+  // USB: send raw ESC/POS bytes to the Windows printer by name via spooler API
   const { execSync } = require("child_process");
   const os = require("os");
   const fs = require("fs");
   const path = require("path");
   const tmpFile = path.join(os.tmpdir(), `hsj_print_${Date.now()}.bin`);
+  const scriptPath = path.join(__dirname, "rawprint.ps1");
   fs.writeFileSync(tmpFile, buffer);
   try {
-    // Raw print to Windows printer name (works for ESC/POS receipt printers)
-    execSync(`copy /b "${tmpFile}" "\\\\\\\\localhost\\\\${device.usb_name}"`, { shell: "cmd.exe" });
-  } catch {
-    // Fallback: try using PRINT command
-    execSync(`print /D:"${device.usb_name}" "${tmpFile}"`, { shell: "cmd.exe" });
+    execSync(
+      `powershell -ExecutionPolicy Bypass -File "${scriptPath}" -printerName "${device.usb_name}" -filePath "${tmpFile}"`,
+      { shell: "cmd.exe", stdio: "pipe" }
+    );
   } finally {
     try { fs.unlinkSync(tmpFile); } catch {}
   }
