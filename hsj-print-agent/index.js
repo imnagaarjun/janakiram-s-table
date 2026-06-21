@@ -7,6 +7,7 @@ const { renderKOT, renderBill } = require("./escpos-renderer");
 const SUPABASE_URL            = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const RESTAURANT_ID           = process.env.RESTAURANT_ID;
+const HUB_ID                  = process.env.HUB_ID || null;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE || !RESTAURANT_ID) {
   console.error("Missing env vars. Copy .env.example → .env and fill in the values.");
@@ -90,6 +91,13 @@ async function processJob(job) {
 
   try {
     const device = await fetchDevice(job.device_id);
+
+    // Multi-hub: if this agent has a HUB_ID set, skip jobs whose device belongs to a different hub
+    if (HUB_ID && device.hub_id && device.hub_id !== HUB_ID) {
+      console.log(`Job ${job.id} is for hub "${device.hub_id}", this hub is "${HUB_ID}" — skipping`);
+      await supabase.from("print_jobs").update({ status: "pending" }).eq("id", job.id);
+      return;
+    }
     const payload = job.payload;
     const copies  = job.copies ?? 1;
 

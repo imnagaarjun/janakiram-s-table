@@ -294,6 +294,7 @@ interface PrinterDevice {
   net_port: number | null;
   paper_width: number;
   is_active: boolean;
+  hub_id: string | null;
 }
 
 interface PrinterAssignment {
@@ -302,7 +303,7 @@ interface PrinterAssignment {
   copies: number;
 }
 
-const BLANK_DEVICE: Omit<PrinterDevice, "id"> = { name: "", type: "usb_thermal", usb_name: "", net_host: "", net_port: 9100, paper_width: 80, is_active: true };
+const BLANK_DEVICE: Omit<PrinterDevice, "id"> = { name: "", type: "usb_thermal", usb_name: "", net_host: "", net_port: 9100, paper_width: 80, is_active: true, hub_id: "" };
 
 function PrintersPanel({ restaurantId }: { restaurantId: string }) {
   const [devices, setDevices] = useState<PrinterDevice[]>([]);
@@ -403,9 +404,10 @@ function PrintersPanel({ restaurantId }: { restaurantId: string }) {
                 <span className="text-xs text-muted-foreground ml-2">
                   {d.type === "usb_thermal" ? `USB · ${d.usb_name}` : `Network · ${d.net_host}:${d.net_port}`}
                   {" · "}{d.paper_width}mm
+                  {d.hub_id ? <span className="ml-2 px-1.5 py-0.5 rounded bg-accent text-accent-foreground font-mono">{d.hub_id}</span> : null}
                 </span>
               </div>
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditDeviceId(d.id); setEditDevice({ name: d.name, type: d.type, usb_name: d.usb_name, net_host: d.net_host, net_port: d.net_port, paper_width: d.paper_width, is_active: d.is_active }); }}>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditDeviceId(d.id); setEditDevice({ name: d.name, type: d.type, usb_name: d.usb_name, net_host: d.net_host, net_port: d.net_port, paper_width: d.paper_width, is_active: d.is_active, hub_id: d.hub_id }); }}>
                 <Printer className="h-3.5 w-3.5" />
               </Button>
               <Button size="icon" variant="ghost" className="h-8 w-8 text-danger" onClick={() => deleteDevice(d.id)}>
@@ -525,6 +527,10 @@ function DeviceForm({ value, onChange, footer }: {
               <SelectItem value="80">80mm</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        <div>
+          <Label className="text-xs mb-1 block">Hub label <span className="text-muted-foreground font-normal">(optional — for multiple PCs)</span></Label>
+          <Input value={value.hub_id ?? ""} onChange={(e) => onChange({ ...value, hub_id: e.target.value || null })} placeholder="e.g. counter-pc or kitchen-pc" className="h-8 text-sm" />
         </div>
       </div>
       {footer}
