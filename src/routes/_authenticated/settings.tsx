@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Save, Upload } from "lucide-react";
+import { Loader2, Save, Upload, Printer, Plus, Trash2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { AccessGuard } from "@/components/AccessGuard";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const MODULES = [
   { key: "tables", label: "Tables & Ordering" },
@@ -239,6 +240,9 @@ function SettingsInner() {
         </Button>
       </div>
 
+      {/* Printers */}
+      {rest && <PrintersPanel restaurantId={rest.id} />}
+
       {/* Modules */}
       <div className="rounded-2xl border border-border bg-surface p-4 md:p-6 shadow-sm space-y-4 mt-6">
         <div className="flex items-center justify-between">
@@ -265,6 +269,265 @@ function SettingsInner() {
           })}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Printers panel
+// ──────────────────────────────────────────────────────────────────────────────
+
+const JOB_TYPES = [
+  { key: "dining_kot",    label: "Dining — KOT (kitchen)" },
+  { key: "takeaway_kot",  label: "Takeaway — KOT (kitchen)" },
+  { key: "dining_bill",   label: "Dining — Bill (counter)" },
+  { key: "takeaway_bill", label: "Takeaway — Bill (counter)" },
+  { key: "report",        label: "Reports" },
+] as const;
+
+interface PrinterDevice {
+  id: string;
+  name: string;
+  type: "usb_thermal" | "network_thermal";
+  usb_name: string | null;
+  net_host: string | null;
+  net_port: number | null;
+  paper_width: number;
+  is_active: boolean;
+}
+
+interface PrinterAssignment {
+  job_type: string;
+  device_id: string | null;
+  copies: number;
+}
+
+const BLANK_DEVICE: Omit<PrinterDevice, "id"> = { name: "", type: "usb_thermal", usb_name: "", net_host: "", net_port: 9100, paper_width: 80, is_active: true };
+
+function PrintersPanel({ restaurantId }: { restaurantId: string }) {
+  const [devices, setDevices] = useState<PrinterDevice[]>([]);
+  const [assignments, setAssignments] = useState<PrinterAssignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addingDevice, setAddingDevice] = useState(false);
+  const [newDevice, setNewDevice] = useState<Omit<PrinterDevice, "id">>(BLANK_DEVICE);
+  const [saving, setSaving] = useState(false);
+  const [editDeviceId, setEditDeviceId] = useState<string | null>(null);
+  const [editDevice, setEditDevice] = useState<Omit<PrinterDevice, "id">>(BLANK_DEVICE);
+
+  const load = useCallback(async () => {
+    const [{ data: devs }, { data: asgns }] = await Promise.all([
+      db.from("printer_devices").select("*").eq("restaurant_id", restaurantId).order("name"),
+      db.from("printer_assignments").select("job_type,device_id,copies").eq("restaurant_id", restaurantId),
+    ]);
+    setDevices((devs ?? []) as PrinterDevice[]);
+    setAssignments((asgns ?? []) as PrinterAssignment[]);
+    setLoading(false);
+  }, [restaurantId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function addDevice() {
+    if (!newDevice.name.trim()) { toast.error("Name required"); return; }
+    if (newDevice.type === "usb_thermal" && !newDevice.usb_name?.trim()) { toast.error("Windows printer name required"); return; }
+    if (newDevice.type === "network_thermal" && !newDevice.net_host?.trim()) { toast.error("IP address required"); return; }
+    setSaving(true);
+    const { error } = await db.from("printer_devices").insert({ ...newDevice, restaurant_id: restaurantId });
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Printer added");
+    setAddingDevice(false);
+    setNewDevice(BLANK_DEVICE);
+    load();
+  }
+
+  async function saveDevice(id: string) {
+    setSaving(true);
+    const { error } = await (db.from("printer_devices") as any).update(editDevice).eq("id", id);
+    setSaving(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Printer updated");
+    setEditDeviceId(null);
+    load();
+  }
+
+  async function deleteDevice(id: string) {
+    const { error } = await db.from("printer_devices").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Printer removed");
+    load();
+  }
+
+  async function setAssignment(jobType: string, deviceId: string | null, copies: number) {
+    const { error } = await (db.from("printer_assignments") as any).upsert(
+      { restaurant_id: restaurantId, job_type: jobType, device_id: deviceId || null, copies },
+      { onConflict: "restaurant_id,job_type" },
+    );
+    if (error) toast.error(error.message);
+    else load();
+  }
+
+  if (loading) return null;
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface p-4 md:p-6 shadow-sm space-y-5 mt-6">
+      <div className="flex items-center gap-2">
+        <Printer className="h-5 w-5 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Printers</h2>
+      </div>
+      <p className="text-sm text-muted-foreground -mt-2">
+        Register USB or network thermal printers connected to the Windows hub PC, then assign each print type to a printer.
+        The hub agent automatically picks up jobs and prints without opening a browser dialog on any device.
+      </p>
+
+      {/* Device list */}
+      <div>
+        <h3 className="text-sm font-semibold mb-2">Registered printers</h3>
+        {devices.length === 0 && !addingDevice && (
+          <p className="text-sm text-muted-foreground">No printers registered yet.</p>
+        )}
+        <div className="space-y-2">
+          {devices.map((d) => editDeviceId === d.id ? (
+            <DeviceForm key={d.id} value={editDevice} onChange={setEditDevice}
+              footer={
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => saveDevice(d.id)} disabled={saving}>{saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}Save</Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditDeviceId(null)}><X className="h-3 w-3 mr-1" />Cancel</Button>
+                </div>
+              }
+            />
+          ) : (
+            <div key={d.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-background">
+              <Printer className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-sm">{d.name}</span>
+                <span className="text-xs text-muted-foreground ml-2">
+                  {d.type === "usb_thermal" ? `USB · ${d.usb_name}` : `Network · ${d.net_host}:${d.net_port}`}
+                  {" · "}{d.paper_width}mm
+                </span>
+              </div>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditDeviceId(d.id); setEditDevice({ name: d.name, type: d.type, usb_name: d.usb_name, net_host: d.net_host, net_port: d.net_port, paper_width: d.paper_width, is_active: d.is_active }); }}>
+                <Printer className="h-3.5 w-3.5" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-8 w-8 text-danger" onClick={() => deleteDevice(d.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        {addingDevice ? (
+          <div className="mt-3">
+            <DeviceForm value={newDevice} onChange={setNewDevice}
+              footer={
+                <div className="flex gap-2 mt-2">
+                  <Button size="sm" onClick={addDevice} disabled={saving}>{saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}Add printer</Button>
+                  <Button size="sm" variant="outline" onClick={() => { setAddingDevice(false); setNewDevice(BLANK_DEVICE); }}>Cancel</Button>
+                </div>
+              }
+            />
+          </div>
+        ) : (
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => setAddingDevice(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add printer
+          </Button>
+        )}
+      </div>
+
+      {/* Assignments */}
+      {devices.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold mb-2">Print type assignments</h3>
+          <p className="text-xs text-muted-foreground mb-3">Choose which printer handles each print type. "Browser" falls back to the device's own print dialog.</p>
+          <div className="space-y-2">
+            {JOB_TYPES.map(({ key, label }) => {
+              const asgn = assignments.find((a) => a.job_type === key);
+              return (
+                <div key={key} className="flex items-center gap-3 flex-wrap">
+                  <span className="text-sm w-52 shrink-0">{label}</span>
+                  <Select
+                    value={asgn?.device_id ?? "browser"}
+                    onValueChange={(v) => setAssignment(key, v === "browser" ? null : v, asgn?.copies ?? 1)}
+                  >
+                    <SelectTrigger className="w-48 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="browser">Browser (no hub)</SelectItem>
+                      {devices.filter((d) => d.is_active).map((d) => (
+                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">Copies:</span>
+                    <Input
+                      type="number" min={1} max={5}
+                      value={asgn?.copies ?? 1}
+                      onChange={(e) => setAssignment(key, asgn?.device_id ?? null, Math.max(1, parseInt(e.target.value) || 1))}
+                      className="h-8 w-16 text-xs"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeviceForm({ value, onChange, footer }: {
+  value: Omit<PrinterDevice, "id">;
+  onChange: (v: Omit<PrinterDevice, "id">) => void;
+  footer: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-border p-3 space-y-3 bg-background">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <Label className="text-xs mb-1 block">Printer name</Label>
+          <Input value={value.name} onChange={(e) => onChange({ ...value, name: e.target.value })} placeholder="e.g. Kitchen Printer" className="h-8 text-sm" />
+        </div>
+        <div>
+          <Label className="text-xs mb-1 block">Type</Label>
+          <Select value={value.type} onValueChange={(v) => onChange({ ...value, type: v as "usb_thermal" | "network_thermal" })}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="usb_thermal">USB Thermal</SelectItem>
+              <SelectItem value="network_thermal">Network / IP Thermal</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {value.type === "usb_thermal" ? (
+          <div className="sm:col-span-2">
+            <Label className="text-xs mb-1 block">Windows printer name</Label>
+            <Input value={value.usb_name ?? ""} onChange={(e) => onChange({ ...value, usb_name: e.target.value })} placeholder='e.g. "TVS-E RP3200 Star" — from Devices & Printers' className="h-8 text-sm" />
+          </div>
+        ) : (
+          <>
+            <div>
+              <Label className="text-xs mb-1 block">IP address</Label>
+              <Input value={value.net_host ?? ""} onChange={(e) => onChange({ ...value, net_host: e.target.value })} placeholder="192.168.1.100" className="h-8 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs mb-1 block">Port</Label>
+              <Input type="number" value={value.net_port ?? 9100} onChange={(e) => onChange({ ...value, net_port: parseInt(e.target.value) || 9100 })} className="h-8 text-sm" />
+            </div>
+          </>
+        )}
+        <div>
+          <Label className="text-xs mb-1 block">Paper width (mm)</Label>
+          <Select value={String(value.paper_width)} onValueChange={(v) => onChange({ ...value, paper_width: parseInt(v) })}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="58">58mm</SelectItem>
+              <SelectItem value="80">80mm</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {footer}
     </div>
   );
 }

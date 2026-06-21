@@ -16,6 +16,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { computeBill, type BillLine } from "@/lib/billing";
 import { inr } from "@/lib/gst";
 import { printBill } from "@/lib/print-bill";
+import { routePrintJob } from "@/lib/print-router";
 import { SettlementDialog } from "./SettlementDialog";
 import { SettledBillControls } from "./SettledBillControls";
 
@@ -306,9 +307,9 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
     nav({ to: "/order/$sessionId", params: { sessionId } });
   }
 
-  function reprint() {
+  async function reprint() {
     if (!existingInvoice || !restaurant || !session) return;
-    printBill({
+    const opts = {
       restaurant,
       invoice_no: existingInvoice.invoice_no,
       issued_at: existingInvoice.issued_at,
@@ -327,12 +328,17 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
       payments: existingPayments,
       duplicate: true,
       waiterName,
-    });
+    };
+    const jobType = session.channel === "dinein" ? "dining_bill" : "takeaway_bill" as const;
+    const queued = profile?.restaurant_id
+      ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: opts }).catch(() => null)
+      : null;
+    if (!queued) printBill(opts);
   }
 
-  function printFresh() {
+  async function printFresh() {
     if (!confirmation || !restaurant || !session) return;
-    printBill({
+    const opts = {
       restaurant,
       invoice_no: confirmation.invoice_no,
       issued_at: new Date().toISOString(),
@@ -352,7 +358,12 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
         .filter((p) => Number(p.amount) > 0)
         .map((p) => ({ mode: p.mode, amount: Number(p.amount), ref_no: p.ref_no || null })),
       waiterName,
-    });
+    };
+    const jobType = session.channel === "dinein" ? "dining_bill" : "takeaway_bill" as const;
+    const queued = profile?.restaurant_id
+      ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: opts }).catch(() => null)
+      : null;
+    if (!queued) printBill(opts);
   }
 
   if (loading) {

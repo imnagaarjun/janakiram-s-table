@@ -22,6 +22,7 @@ import { TakeawaySettleDialog, type TakeawaySettleResult } from "./TakeawaySettl
 import { computeBill, type BillLine } from "@/lib/billing";
 import { printBill } from "@/lib/print-bill";
 import { printKOT } from "@/lib/print-kot";
+import { routePrintJob, type JobType } from "@/lib/print-router";
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -382,16 +383,23 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     const kotNo = (data as { kot_no: number }).kot_no;
     toast.success(`KOT K-${String(kotNo).padStart(4, "0")} sent`);
 
-    printKOT({
-      restaurantName: restaurant?.name,
-      kotNo: `K-${String(kotNo).padStart(4, "0")}`,
-      sentAt: new Date().toISOString(),
-      tableLabel: session?.table_code ? `Table ${session.table_code}` : "Takeaway",
-      pax: session?.pax ?? 1,
-      lines: draft.map((d) => ({ name: d.name, qty: d.qty, note: d.note })),
-      note: kotNote || undefined,
-      waiterName,
-    });
+    {
+      const kotOpts = {
+        restaurantName: restaurant?.name,
+        kotNo: `K-${String(kotNo).padStart(4, "0")}`,
+        sentAt: new Date().toISOString(),
+        tableLabel: session?.table_code ? `Table ${session.table_code}` : "Takeaway",
+        pax: session?.pax ?? 1,
+        lines: draft.map((d) => ({ name: d.name, qty: d.qty, note: d.note })),
+        note: kotNote || undefined,
+        waiterName,
+      };
+      const jobType: JobType = "dining_kot";
+      const queued = profile?.restaurant_id
+        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: kotOpts, idempotencyKey: idemKeyRef.current ?? undefined }).catch(() => null)
+        : null;
+      if (!queued) printKOT(kotOpts);
+    }
 
     clearDraft();
     setCartOpen(false);
@@ -415,25 +423,31 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
     });
   }, [draft, prices]);
 
-  function onTakeawaySettled(r: TakeawaySettleResult) {
+  async function onTakeawaySettled(r: TakeawaySettleResult) {
     const kotTag = `K-${String(r.kot_no).padStart(4, "0")}`;
     toast.success(`Invoice ${r.invoice_no} settled · KOT ${kotTag} sent`);
 
     // 1) Print KOT for the kitchen
-    printKOT({
-      restaurantName: restaurant?.name,
-      kotNo: kotTag,
-      sentAt: new Date().toISOString(),
-      tableLabel: "Takeaway",
-      pax: session?.pax ?? 1,
-      lines: draft.map((d) => ({ name: d.name, qty: d.qty, note: d.note })),
-      note: kotNote || undefined,
-      waiterName,
-    });
+    {
+      const kotOpts = {
+        restaurantName: restaurant?.name,
+        kotNo: kotTag,
+        sentAt: new Date().toISOString(),
+        tableLabel: "Takeaway",
+        pax: session?.pax ?? 1,
+        lines: draft.map((d) => ({ name: d.name, qty: d.qty, note: d.note })),
+        note: kotNote || undefined,
+        waiterName,
+      };
+      const queued = profile?.restaurant_id
+        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType: "takeaway_kot", payload: kotOpts }).catch(() => null)
+        : null;
+      if (!queued) printKOT(kotOpts);
+    }
 
     // 2) Print PAID bill at the counter
     if (restaurant && session) {
-      printBill({
+      const billOpts = {
         restaurant,
         invoice_no: r.invoice_no,
         issued_at: new Date().toISOString(),
@@ -449,11 +463,15 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
           round_off: r.round_off,
           total: r.total,
         },
-        payments: [],
+        payments: [] as { mode: string; amount: number; ref_no?: string | null }[],
         notes: r.change > 0 ? `Tendered ₹${r.tendered.toFixed(2)} · Change ₹${r.change.toFixed(2)}` : null,
         waiterName,
         paidMarker: true,
-      });
+      };
+      const queued = profile?.restaurant_id
+        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType: "takeaway_bill", payload: billOpts }).catch(() => null)
+        : null;
+      if (!queued) printBill(billOpts);
     }
 
     setTakeawaySettleOpen(false);

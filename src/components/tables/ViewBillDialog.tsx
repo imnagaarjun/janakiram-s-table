@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { db } from "@/lib/db";
 import { inr } from "@/lib/gst";
 import { printBill } from "@/lib/print-bill";
+import { routePrintJob } from "@/lib/print-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -112,9 +113,9 @@ export function ViewBillDialog({ open, onOpenChange, restaurantId, initialInvoic
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialInvoiceNo]);
 
-  function reprint() {
+  async function reprint() {
     if (!inv || !rest) return;
-    printBill({
+    const opts = {
       restaurant: rest,
       invoice_no: inv.invoice_no,
       issued_at: inv.issued_at,
@@ -128,7 +129,12 @@ export function ViewBillDialog({ open, onOpenChange, restaurantId, initialInvoic
       payments: payments.map((p) => ({ mode: p.mode, amount: p.amount, ref_no: p.ref_no })),
       duplicate: true,
       paidMarker: inv.status === "settled",
-    });
+    };
+    const jobType = session?.channel === "dinein" ? "dining_bill" : "takeaway_bill" as const;
+    const queued = restaurantId
+      ? await routePrintJob({ restaurantId, jobType, payload: opts }).catch(() => null)
+      : null;
+    if (!queued) printBill(opts);
   }
 
   function reset() {
