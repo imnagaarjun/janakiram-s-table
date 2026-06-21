@@ -13,6 +13,7 @@ export interface Profile {
   notify_stock?: boolean;
   photo_url?: string | null;
   permissions?: Record<string, boolean> | null;
+  section_id?: string | null;
 }
 
 export interface Restaurant {

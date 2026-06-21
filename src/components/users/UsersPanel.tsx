@@ -38,6 +38,7 @@ interface StaffRow {
   notify_stock: boolean;
   role: string;
   permissions: Record<string, boolean> | null;
+  section_id: string | null;
 }
 
 interface FormState {
@@ -49,6 +50,7 @@ interface FormState {
   canEditPayment?: boolean;
   photoUrl?: string | null;
   notifyStock?: boolean;
+  sectionId?: string | null;
 }
 
 const BLANK: FormState = { name: "", role: "waiter", email: "", password: "", contactEmail: "" };
@@ -168,6 +170,7 @@ export function UsersPanel() {
   const [permsReset, setPermsReset] = useState(false);
   const [roles, setRoles] = useState<string[]>(DEFAULT_ROLES);
   const [newRole, setNewRole] = useState("");
+  const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
 
   const callCreate = useServerFn(createStaffUser);
   const callUpdate = useServerFn(updateStaffUser);
@@ -180,13 +183,19 @@ export function UsersPanel() {
     if (!profile) return;
     const { data: profiles } = await db
       .from("profiles")
-      .select("id,name,auth_email,contact_email,is_active,last_active_at,can_edit_payment,photo_url,notify_stock,permissions")
+      .select("id,name,auth_email,contact_email,is_active,last_active_at,can_edit_payment,photo_url,notify_stock,permissions,section_id")
       .eq("restaurant_id", profile.restaurant_id)
       .order("name");
     const { data: rolesData } = await db
       .from("user_roles")
       .select("user_id,role")
       .eq("restaurant_id", profile.restaurant_id);
+    const { data: sectionRows } = await db
+      .from("print_sections")
+      .select("id,name")
+      .eq("restaurant_id", profile.restaurant_id)
+      .order("name");
+    setSections((sectionRows ?? []) as { id: string; name: string }[]);
 
     const roleMap = new Map<string, string>();
     (rolesData ?? []).forEach((r: { user_id: string; role: string }) => roleMap.set(r.user_id, r.role));
@@ -267,6 +276,7 @@ export function UsersPanel() {
           photoUrl: editForm.photoUrl,
           notifyStock: editForm.notifyStock,
           permissions: permsReset ? null : (Object.keys(permsOverride).length > 0 ? permsOverride : undefined),
+          sectionId: editForm.sectionId === undefined ? undefined : editForm.sectionId,
         },
       });
       toast.success("Updated");
@@ -466,6 +476,21 @@ export function UsersPanel() {
                         </SelectContent>
                       </Select>
                     </div>
+                    {sections.length > 0 && (
+                      <div>
+                        <Label className="block mb-1 text-xs">Section <span className="text-muted-foreground">(for printer routing)</span></Label>
+                        <Select
+                          value={(editForm.sectionId ?? s.section_id) ?? "__none__"}
+                          onValueChange={(v) => setEditForm((f) => ({ ...f, sectionId: v === "__none__" ? null : v }))}
+                        >
+                          <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">None (default printers)</SelectItem>
+                            {sections.map((sec) => <SelectItem key={sec.id} value={sec.id}>{sec.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div>
                       <Label className="block mb-1 text-xs">New password <span className="text-muted-foreground">(leave blank to keep)</span></Label>
                       <PasswordField
@@ -612,6 +637,7 @@ export function UsersPanel() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold">{s.name}</span>
                       <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium capitalize">{s.role}</span>
+                      {s.section_id && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600">{sections.find((sec) => sec.id === s.section_id)?.name ?? "section"}</span>}
                       {s.notify_stock && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600">stock alerts</span>}
                       {!s.is_active && <span className="text-xs text-muted-foreground">(inactive)</span>}
                     </div>
@@ -631,7 +657,7 @@ export function UsersPanel() {
                     </Button>
                     <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => {
                       setEditId(s.id);
-                      setEditForm({ name: s.name, role: s.role, password: "", contactEmail: s.contact_email ?? "", canEditPayment: s.can_edit_payment, photoUrl: s.photo_url, notifyStock: s.notify_stock });
+                      setEditForm({ name: s.name, role: s.role, password: "", contactEmail: s.contact_email ?? "", canEditPayment: s.can_edit_payment, photoUrl: s.photo_url, notifyStock: s.notify_stock, sectionId: s.section_id });
                       setPermsOverride(s.permissions ?? {});
                       setPermsReset(false);
                     }}>

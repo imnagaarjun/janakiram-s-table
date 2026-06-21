@@ -1,0 +1,18 @@
+{
+  "name": "hsj-print-agent",
+  "version": "1.0.0",
+  "description": "Print hub agent for Hotel Sri Janakiram — relays print jobs from Supabase to local thermal printers",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "install-service": "node install-service.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "dotenv": "^16.4.5",
+    "escpos": "3.0.0-alpha.6",
+    "escpos-network": "3.0.0-alpha.5",
+    "escpos-usb": "3.0.0-alpha.4",
+    "node-windows": "^1.0.0-beta.8"
+  }
+}
