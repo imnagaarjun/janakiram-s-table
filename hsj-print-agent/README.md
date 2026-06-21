@@ -175,17 +175,29 @@ If you have **more than one Windows PC** (e.g. one at the counter, one in the ki
 
 **How to set it up:**
 
-1. **In the app** (Settings → Printers), when adding/editing each printer device, fill in the **Hub label** field:
-   - Counter printers → `counter-pc`
-   - Kitchen printers → `kitchen-pc`
+1. **In the app** (Settings → Printers → **Hubs**), add one hub per PC. Each hub has a name (e.g. "Counter PC") and a **hub key** (e.g. `counter-pc`) — the hub key is the value you put in that PC's `.env`.
 
-2. **On each Windows PC**, edit the `.env` file and set `HUB_ID` to match:
+2. **Assign each printer to a hub**: in Settings → Printers → Printers, edit each device and pick its **Hub** from the dropdown.
+
+3. **On each Windows PC**, edit the `.env` file and set `HUB_ID` to that hub's key:
    - Counter PC `.env`: `HUB_ID=counter-pc`
    - Kitchen PC `.env`: `HUB_ID=kitchen-pc`
 
-Now each agent will only handle jobs for its own printers. Jobs for other hubs are left for the correct PC to pick up.
+Now each agent only handles jobs for the printers assigned to its hub. Jobs for other hubs are left for the correct PC to pick up.
 
-> **Single PC**: leave `HUB_ID=` blank and don't set Hub labels — the agent handles everything.
+> **Single PC**: leave `HUB_ID=` blank and set each printer's Hub to "None" — the agent handles everything.
+
+---
+
+## Sections (route by who is printing)
+
+You can route the same print type to different printers depending on **which staff user** triggers it — for example, an "AC Floor" cashier's takeaway bill prints on the AC counter printer, while a "Non-AC Ground" cashier's takeaway bill prints on a different one.
+
+1. **Settings → Printers → Sections**: add your sections (e.g. "AC Floor", "Non-AC Ground").
+2. **Settings → Printers → Print type assignments**: use the **Section** selector at the top. "Default — all sections" is the fallback; pick a section to override specific printers just for that section.
+3. **Staff users → edit a user → Section**: assign each user to a section.
+
+When that user prints, the app uses their section's printer for the job type, falling back to the Default assignment if the section has none.
 
 ---
 
@@ -246,6 +258,46 @@ CREATE POLICY "select own" ON public.print_jobs FOR SELECT
 If the tables already exist and you just need the `hub_id` column:
 ```sql
 ALTER TABLE public.printer_devices ADD COLUMN IF NOT EXISTS hub_id text;
+```
+
+For **first-class hubs + sections** (managed in Settings → Printers), also run:
+```sql
+CREATE TABLE IF NOT EXISTS public.printer_hubs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  restaurant_id uuid NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  hub_key text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE (restaurant_id, hub_key)
+);
+ALTER TABLE public.printer_hubs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "restaurant members" ON public.printer_hubs
+  USING (restaurant_id = (SELECT restaurant_id FROM profiles WHERE id = auth.uid()));
+
+CREATE TABLE IF NOT EXISTS public.print_sections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  restaurant_id uuid NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.print_sections ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "restaurant members" ON public.print_sections
+  USING (restaurant_id = (SELECT restaurant_id FROM profiles WHERE id = auth.uid()));
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS section_id uuid REFERENCES print_sections(id) ON DELETE SET NULL;
+
+ALTER TABLE public.printer_assignments
+  ADD COLUMN IF NOT EXISTS section_id uuid REFERENCES print_sections(id) ON DELETE CASCADE;
+ALTER TABLE public.printer_assignments ADD COLUMN IF NOT EXISTS id uuid DEFAULT gen_random_uuid();
+ALTER TABLE public.printer_assignments DROP CONSTRAINT IF EXISTS printer_assignments_pkey;
+UPDATE public.printer_assignments SET id = gen_random_uuid() WHERE id IS NULL;
+ALTER TABLE public.printer_assignments ALTER COLUMN id SET NOT NULL;
+ALTER TABLE public.printer_assignments ADD PRIMARY KEY (id);
+CREATE UNIQUE INDEX IF NOT EXISTS printer_assignments_default_uniq ON public.printer_assignments
+  (restaurant_id, job_type) WHERE section_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS printer_assignments_section_uniq ON public.printer_assignments
+  (restaurant_id, section_id, job_type) WHERE section_id IS NOT NULL;
 ```
 
 ---

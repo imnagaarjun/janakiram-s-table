@@ -331,7 +331,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
     };
     const jobType = session.channel === "dinein" ? "dining_bill" : "takeaway_bill" as const;
     const queued = profile?.restaurant_id
-      ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: opts }).catch(() => null)
+      ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: opts, sectionId: profile.section_id ?? null }).catch(() => null)
       : null;
     if (!queued) printBill(opts);
   }
@@ -361,7 +361,7 @@ export function BillPanel({ sessionId }: { sessionId: string }) {
     };
     const jobType = session.channel === "dinein" ? "dining_bill" : "takeaway_bill" as const;
     const queued = profile?.restaurant_id
-      ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: opts }).catch(() => null)
+      ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: opts, sectionId: profile.section_id ?? null }).catch(() => null)
       : null;
     if (!queued) printBill(opts);
   }

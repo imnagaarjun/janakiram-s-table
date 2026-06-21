@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { inr } from "@/lib/gst";
 import { printBill } from "@/lib/print-bill";
 import { routePrintJob } from "@/lib/print-router";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +34,7 @@ interface Restaurant {
 interface ReprintLine { name: string; qty: number; inclusive_price: number; line_total: number }
 
 export function ViewBillDialog({ open, onOpenChange, restaurantId, initialInvoiceNo }: { open: boolean; onOpenChange: (v: boolean) => void; restaurantId: string | null; initialInvoiceNo?: string }) {
+  const { profile } = useAuth();
   const [billNo, setBillNo] = useState("");
   const autoLoaded = useRef<string | null>(null);
   const [searching, setSearching] = useState(false);
@@ -132,7 +134,7 @@ export function ViewBillDialog({ open, onOpenChange, restaurantId, initialInvoic
     };
     const jobType = session?.channel === "dinein" ? "dining_bill" : "takeaway_bill" as const;
     const queued = restaurantId
-      ? await routePrintJob({ restaurantId, jobType, payload: opts }).catch(() => null)
+      ? await routePrintJob({ restaurantId, jobType, payload: opts, sectionId: profile?.section_id ?? null }).catch(() => null)
       : null;
     if (!queued) printBill(opts);
   }

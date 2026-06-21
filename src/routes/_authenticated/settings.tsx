@@ -298,9 +298,22 @@ interface PrinterDevice {
 }
 
 interface PrinterAssignment {
+  id?: string;
   job_type: string;
   device_id: string | null;
   copies: number;
+  section_id: string | null;
+}
+
+interface PrinterHub {
+  id: string;
+  name: string;
+  hub_key: string;
+}
+
+interface PrintSection {
+  id: string;
+  name: string;
 }
 
 const BLANK_DEVICE: Omit<PrinterDevice, "id"> = { name: "", type: "usb_thermal", usb_name: "", net_host: "", net_port: 9100, paper_width: 80, is_active: true, hub_id: "" };
@@ -308,20 +321,28 @@ const BLANK_DEVICE: Omit<PrinterDevice, "id"> = { name: "", type: "usb_thermal",
 function PrintersPanel({ restaurantId }: { restaurantId: string }) {
   const [devices, setDevices] = useState<PrinterDevice[]>([]);
   const [assignments, setAssignments] = useState<PrinterAssignment[]>([]);
+  const [hubs, setHubs] = useState<PrinterHub[]>([]);
+  const [sections, setSections] = useState<PrintSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingDevice, setAddingDevice] = useState(false);
   const [newDevice, setNewDevice] = useState<Omit<PrinterDevice, "id">>(BLANK_DEVICE);
   const [saving, setSaving] = useState(false);
   const [editDeviceId, setEditDeviceId] = useState<string | null>(null);
   const [editDevice, setEditDevice] = useState<Omit<PrinterDevice, "id">>(BLANK_DEVICE);
+  // "" = Default (all sections); otherwise a section id
+  const [assignSection, setAssignSection] = useState<string>("");
 
   const load = useCallback(async () => {
-    const [{ data: devs }, { data: asgns }] = await Promise.all([
+    const [{ data: devs }, { data: asgns }, { data: hubRows }, { data: secRows }] = await Promise.all([
       db.from("printer_devices").select("*").eq("restaurant_id", restaurantId).order("name"),
-      db.from("printer_assignments").select("job_type,device_id,copies").eq("restaurant_id", restaurantId),
+      db.from("printer_assignments").select("id,job_type,device_id,copies,section_id").eq("restaurant_id", restaurantId),
+      db.from("printer_hubs").select("id,name,hub_key").eq("restaurant_id", restaurantId).order("name"),
+      db.from("print_sections").select("id,name").eq("restaurant_id", restaurantId).order("name"),
     ]);
     setDevices((devs ?? []) as PrinterDevice[]);
     setAssignments((asgns ?? []) as PrinterAssignment[]);
+    setHubs((hubRows ?? []) as PrinterHub[]);
+    setSections((secRows ?? []) as PrintSection[]);
     setLoading(false);
   }, [restaurantId]);
 
@@ -358,13 +379,50 @@ function PrintersPanel({ restaurantId }: { restaurantId: string }) {
     load();
   }
 
+  // Explicit upsert keyed on (restaurant, section, job_type). section "" = global default (section_id NULL).
   async function setAssignment(jobType: string, deviceId: string | null, copies: number) {
-    const { error } = await (db.from("printer_assignments") as any).upsert(
-      { restaurant_id: restaurantId, job_type: jobType, device_id: deviceId || null, copies },
-      { onConflict: "restaurant_id,job_type" },
+    const sectionId = assignSection || null;
+    const existing = assignments.find(
+      (a) => a.job_type === jobType && (a.section_id ?? null) === sectionId,
     );
-    if (error) toast.error(error.message);
-    else load();
+    if (existing?.id) {
+      const { error } = await (db.from("printer_assignments") as any)
+        .update({ device_id: deviceId || null, copies }).eq("id", existing.id);
+      if (error) { toast.error(error.message); return; }
+    } else {
+      const { error } = await (db.from("printer_assignments") as any)
+        .insert({ restaurant_id: restaurantId, job_type: jobType, device_id: deviceId || null, copies, section_id: sectionId });
+      if (error) { toast.error(error.message); return; }
+    }
+    load();
+  }
+
+  // Hubs CRUD
+  async function addHub(name: string, hubKey: string) {
+    if (!name.trim() || !hubKey.trim()) { toast.error("Hub name and key required"); return; }
+    const { error } = await db.from("printer_hubs").insert({ restaurant_id: restaurantId, name: name.trim(), hub_key: hubKey.trim() });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Hub added"); load();
+  }
+  async function deleteHub(id: string) {
+    const { error } = await db.from("printer_hubs").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Hub removed"); load();
+  }
+
+  // Sections CRUD
+  async function addSection(name: string) {
+    if (!name.trim()) { toast.error("Section name required"); return; }
+    const { error } = await db.from("print_sections").insert({ restaurant_id: restaurantId, name: name.trim() });
+    if (error) { toast.error(error.message); return; }
+    toast.success("Section added"); load();
+  }
+  async function deleteSection(id: string) {
+    const { error } = await db.from("print_sections").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
+    toast.success("Section removed");
+    if (assignSection === id) setAssignSection("");
+    load();
   }
 
   if (loading) return null;
@@ -380,6 +438,31 @@ function PrintersPanel({ restaurantId }: { restaurantId: string }) {
         The hub agent automatically picks up jobs and prints without opening a browser dialog on any device.
       </p>
 
+      {/* Hubs */}
+      <NamedListEditor
+        title="Hubs (Windows PCs)"
+        hint='Each hub PC runs the print agent. Put the hub key into that PC&apos;s .env as HUB_ID. Leave blank if you only have one PC.'
+        items={hubs.map((h) => ({ id: h.id, primary: h.name, secondary: h.hub_key }))}
+        secondaryLabel="Hub key (HUB_ID)"
+        primaryPlaceholder="e.g. Counter PC"
+        secondaryPlaceholder="e.g. counter-pc"
+        onAdd={(name, key) => addHub(name, key ?? "")}
+        onDelete={deleteHub}
+        addLabel="Add hub"
+        requireSecondary
+      />
+
+      {/* Sections */}
+      <NamedListEditor
+        title="Sections"
+        hint="Named contexts (e.g. AC Floor, Non-AC Ground). Assign each staff user a section in Staff users; prints route to that section's printers."
+        items={sections.map((s) => ({ id: s.id, primary: s.name }))}
+        primaryPlaceholder="e.g. AC Floor"
+        onAdd={(name) => addSection(name)}
+        onDelete={deleteSection}
+        addLabel="Add section"
+      />
+
       {/* Device list */}
       <div>
         <h3 className="text-sm font-semibold mb-2">Registered printers</h3>
@@ -388,7 +471,7 @@ function PrintersPanel({ restaurantId }: { restaurantId: string }) {
         )}
         <div className="space-y-2">
           {devices.map((d) => editDeviceId === d.id ? (
-            <DeviceForm key={d.id} value={editDevice} onChange={setEditDevice}
+            <DeviceForm key={d.id} value={editDevice} onChange={setEditDevice} hubs={hubs}
               footer={
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => saveDevice(d.id)} disabled={saving}>{saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Check className="h-3 w-3 mr-1" />}Save</Button>
@@ -404,7 +487,7 @@ function PrintersPanel({ restaurantId }: { restaurantId: string }) {
                 <span className="text-xs text-muted-foreground ml-2">
                   {d.type === "usb_thermal" ? `USB · ${d.usb_name}` : `Network · ${d.net_host}:${d.net_port}`}
                   {" · "}{d.paper_width}mm
-                  {d.hub_id ? <span className="ml-2 px-1.5 py-0.5 rounded bg-accent text-accent-foreground font-mono">{d.hub_id}</span> : null}
+                  {d.hub_id ? <span className="ml-2 px-1.5 py-0.5 rounded bg-accent text-accent-foreground">{hubs.find((h) => h.hub_key === d.hub_id)?.name ?? d.hub_id}</span> : null}
                 </span>
               </div>
               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditDeviceId(d.id); setEditDevice({ name: d.name, type: d.type, usb_name: d.usb_name, net_host: d.net_host, net_port: d.net_port, paper_width: d.paper_width, is_active: d.is_active, hub_id: d.hub_id }); }}>
@@ -419,7 +502,7 @@ function PrintersPanel({ restaurantId }: { restaurantId: string }) {
 
         {addingDevice ? (
           <div className="mt-3">
-            <DeviceForm value={newDevice} onChange={setNewDevice}
+            <DeviceForm value={newDevice} onChange={setNewDevice} hubs={hubs}
               footer={
                 <div className="flex gap-2 mt-2">
                   <Button size="sm" onClick={addDevice} disabled={saving}>{saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Plus className="h-3 w-3 mr-1" />}Add printer</Button>
@@ -439,10 +522,24 @@ function PrintersPanel({ restaurantId }: { restaurantId: string }) {
       {devices.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold mb-2">Print type assignments</h3>
-          <p className="text-xs text-muted-foreground mb-3">Choose which printer handles each print type. "Browser" falls back to the device's own print dialog.</p>
+          <p className="text-xs text-muted-foreground mb-3">Choose which printer handles each print type. "Browser" falls back to the device's own print dialog. "Default" applies to users with no section, or any section without its own override.</p>
+          {sections.length > 0 && (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-xs text-muted-foreground">Section:</span>
+              <Select value={assignSection || "__default__"} onValueChange={(v) => setAssignSection(v === "__default__" ? "" : v)}>
+                <SelectTrigger className="w-56 h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Default — all sections</SelectItem>
+                  {sections.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-2">
             {JOB_TYPES.map(({ key, label }) => {
-              const asgn = assignments.find((a) => a.job_type === key);
+              const asgn = assignments.find((a) => a.job_type === key && (a.section_id ?? null) === (assignSection || null));
               return (
                 <div key={key} className="flex items-center gap-3 flex-wrap">
                   <span className="text-sm w-52 shrink-0">{label}</span>
@@ -479,10 +576,11 @@ function PrintersPanel({ restaurantId }: { restaurantId: string }) {
   );
 }
 
-function DeviceForm({ value, onChange, footer }: {
+function DeviceForm({ value, onChange, footer, hubs }: {
   value: Omit<PrinterDevice, "id">;
   onChange: (v: Omit<PrinterDevice, "id">) => void;
   footer: React.ReactNode;
+  hubs: PrinterHub[];
 }) {
   return (
     <div className="rounded-lg border border-border p-3 space-y-3 bg-background">
@@ -529,11 +627,82 @@ function DeviceForm({ value, onChange, footer }: {
           </Select>
         </div>
         <div>
-          <Label className="text-xs mb-1 block">Hub label <span className="text-muted-foreground font-normal">(optional — for multiple PCs)</span></Label>
-          <Input value={value.hub_id ?? ""} onChange={(e) => onChange({ ...value, hub_id: e.target.value || null })} placeholder="e.g. counter-pc or kitchen-pc" className="h-8 text-sm" />
+          <Label className="text-xs mb-1 block">Hub <span className="text-muted-foreground font-normal">(which PC this printer is on)</span></Label>
+          <Select value={value.hub_id || "__none__"} onValueChange={(v) => onChange({ ...value, hub_id: v === "__none__" ? null : v })}>
+            <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="None" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">None (single hub)</SelectItem>
+              {hubs.map((h) => (
+                <SelectItem key={h.id} value={h.hub_key}>{h.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       {footer}
+    </div>
+  );
+}
+
+function NamedListEditor({
+  title, hint, items, primaryPlaceholder, secondaryPlaceholder, secondaryLabel,
+  onAdd, onDelete, addLabel, requireSecondary,
+}: {
+  title: string;
+  hint: string;
+  items: { id: string; primary: string; secondary?: string }[];
+  primaryPlaceholder: string;
+  secondaryPlaceholder?: string;
+  secondaryLabel?: string;
+  onAdd: (primary: string, secondary?: string) => void | Promise<void>;
+  onDelete: (id: string) => void | Promise<void>;
+  addLabel: string;
+  requireSecondary?: boolean;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [primary, setPrimary] = useState("");
+  const [secondary, setSecondary] = useState("");
+
+  function submit() {
+    onAdd(primary, requireSecondary ? secondary : undefined);
+    setPrimary(""); setSecondary(""); setAdding(false);
+  }
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold mb-1">{title}</h3>
+      <p className="text-xs text-muted-foreground mb-2">{hint}</p>
+      <div className="space-y-2">
+        {items.map((it) => (
+          <div key={it.id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-background">
+            <div className="flex-1 min-w-0">
+              <span className="font-medium text-sm">{it.primary}</span>
+              {it.secondary ? <span className="ml-2 text-xs text-muted-foreground font-mono">{it.secondary}</span> : null}
+            </div>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-danger" onClick={() => onDelete(it.id)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      {adding ? (
+        <div className="mt-2 rounded-lg border border-border p-3 bg-background space-y-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Input value={primary} onChange={(e) => setPrimary(e.target.value)} placeholder={primaryPlaceholder} className="h-8 text-sm" />
+            {requireSecondary && (
+              <Input value={secondary} onChange={(e) => setSecondary(e.target.value)} placeholder={secondaryPlaceholder} className="h-8 text-sm" aria-label={secondaryLabel} />
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={submit}><Check className="h-3 w-3 mr-1" />Save</Button>
+            <Button size="sm" variant="outline" onClick={() => { setAdding(false); setPrimary(""); setSecondary(""); }}><X className="h-3 w-3 mr-1" />Cancel</Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="outline" size="sm" className="mt-2" onClick={() => setAdding(true)}>
+          <Plus className="h-3.5 w-3.5 mr-1" /> {addLabel}
+        </Button>
+      )}
     </div>
   );
 }

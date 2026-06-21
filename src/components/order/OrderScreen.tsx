@@ -396,7 +396,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
       };
       const jobType: JobType = "dining_kot";
       const queued = profile?.restaurant_id
-        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: kotOpts, idempotencyKey: idemKeyRef.current ?? undefined }).catch(() => null)
+        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType, payload: kotOpts, sectionId: profile.section_id ?? null, idempotencyKey: idemKeyRef.current ?? undefined }).catch(() => null)
         : null;
       if (!queued) printKOT(kotOpts);
     }
@@ -440,7 +440,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         waiterName,
       };
       const queued = profile?.restaurant_id
-        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType: "takeaway_kot", payload: kotOpts }).catch(() => null)
+        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType: "takeaway_kot", payload: kotOpts, sectionId: profile.section_id ?? null }).catch(() => null)
         : null;
       if (!queued) printKOT(kotOpts);
     }
@@ -469,7 +469,7 @@ export function OrderScreen({ sessionId }: { sessionId: string }) {
         paidMarker: true,
       };
       const queued = profile?.restaurant_id
-        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType: "takeaway_bill", payload: billOpts }).catch(() => null)
+        ? await routePrintJob({ restaurantId: profile.restaurant_id, jobType: "takeaway_bill", payload: billOpts, sectionId: profile.section_id ?? null }).catch(() => null)
         : null;
       if (!queued) printBill(billOpts);
     }
