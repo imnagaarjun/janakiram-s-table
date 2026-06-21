@@ -14,12 +14,6 @@ DROP POLICY IF EXISTS "restaurant members" ON public.printer_hubs;
 CREATE POLICY "restaurant members" ON public.printer_hubs
   USING (restaurant_id = (SELECT restaurant_id FROM profiles WHERE id = auth.uid()));
 
--- Seed hubs from existing free-text device hub_ids (keeps current setups working)
-INSERT INTO public.printer_hubs (restaurant_id, name, hub_key)
-  SELECT DISTINCT restaurant_id, hub_id, hub_id FROM public.printer_devices
-  WHERE hub_id IS NOT NULL AND hub_id <> ''
-ON CONFLICT DO NOTHING;
-
 -- 2. Named print sections (e.g. "AC Floor", "Non-AC Ground")
 CREATE TABLE IF NOT EXISTS public.print_sections (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
