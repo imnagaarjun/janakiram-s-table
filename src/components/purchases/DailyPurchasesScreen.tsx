@@ -93,7 +93,6 @@ interface DraftLine {
   adhoc?: boolean;
   unit?: string;
   uid?: string;
-  catPrice?: number;
 }
 
 // Column layout shared by the header and every entry row (desktop); rows stack on phones.
@@ -114,11 +113,6 @@ function shiftDate(date: string, days: number): string {
 
 function typeOf(v: Vendor): VendorType {
   return v.is_multi_product ? "multi" : v.is_fixed_amount ? "fixed" : "single";
-}
-
-// A fixed-price item whose saved price no longer matches the catalogue price.
-function isStale(r: DraftLine): boolean {
-  return r.catPrice != null && num(r.qty) > 0 && num(r.unit_price) !== r.catPrice;
 }
 
 function lineAmount(r: DraftLine): number {
@@ -151,7 +145,6 @@ function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]
       return {
         vendor_product_id: pr.id,
         qty: ex ? String(ex.qty) : "",
-        catPrice: pr.price_mode === "fixed" ? Number(pr.fixed_price ?? 0) : undefined,
         // A saved line keeps the price it was saved at, even if the catalogue price changed later.
         unit_price: ex
           ? String(ex.unit_price)
@@ -451,17 +444,6 @@ export function DailyPurchasesScreen() {
   }
 
   function markDirty(vendorId: string) {
-    // Saving prices fixed-price items from the catalogue, so show that price as soon as an edit starts.
-    setDrafts((d) =>
-      d[vendorId]?.some(isStale)
-        ? {
-            ...d,
-            [vendorId]: d[vendorId].map((r) =>
-              isStale(r) ? { ...r, unit_price: String(r.catPrice) } : r,
-            ),
-          }
-        : d,
-    );
     setDirty((s) => {
       if (s.has(vendorId)) return s;
       const n = new Set(s);
@@ -973,9 +955,6 @@ export function DailyPurchasesScreen() {
                                 {" "}
                                 · Due {inr(draft.due)}
                               </span>
-                            )}
-                            {!isDirty && rows.some(isStale) && (
-                              <span className="text-amber-700 font-medium"> · Price changed</span>
                             )}
                           </span>
                         </span>
@@ -1489,16 +1468,6 @@ function EntryRow({
               placeholder={hint}
               onChange={(v) => onChange({ unit_price: v })}
             />
-            {isStale(draft) && (
-              <button
-                type="button"
-                onClick={() => onChange({ unit_price: String(draft.catPrice) })}
-                title={`Saved at ${inr(num(draft.unit_price))}. The price is now ${inr(draft.catPrice ?? 0)}. Tap to use the new price, then save.`}
-                className="text-[10px] leading-tight text-amber-700 underline text-right whitespace-nowrap"
-              >
-                Use {inr(draft.catPrice ?? 0)}
-              </button>
-            )}
           </Cell>
           <Cell label="Paid" className={cn("order-5", settle === "full" && "hidden sm:flex")}>
             {settle === "full" ? (
