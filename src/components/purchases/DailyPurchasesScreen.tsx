@@ -145,8 +145,12 @@ function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]
       return {
         vendor_product_id: pr.id,
         qty: ex ? String(ex.qty) : "",
-        unit_price:
-          pr.price_mode === "fixed" ? String(pr.fixed_price ?? 0) : ex ? String(ex.unit_price) : "",
+        // A saved line keeps the price it was saved at, even if the catalogue price changed later.
+        unit_price: ex
+          ? String(ex.unit_price)
+          : pr.price_mode === "fixed"
+            ? String(pr.fixed_price ?? 0)
+            : "",
         pay_mode: ex?.pay_mode ?? "cash",
         paid_amount: ex ? String(ex.paid_amount) : "",
         description: "",
@@ -281,6 +285,13 @@ export function DailyPurchasesScreen() {
         dueOnly = (dv.data ?? []) as Vendor[];
       }
       setDueVendors(dueOnly);
+      const missingProds = [
+        ...new Set(lList.map((x) => x.vendor_product_id).filter((id): id is string => !!id)),
+      ].filter((id) => !pList.some((x) => x.id === id));
+      if (missingProds.length) {
+        const mp = await db.from("vendor_products").select("*").in("id", missingProds);
+        pList.push(...((mp.data ?? []) as VendorProduct[]));
+      }
       setVendors(vList);
       setProducts(pList);
       setLines(lList);
@@ -354,6 +365,16 @@ export function DailyPurchasesScreen() {
   }, [lines]);
 
   const savedIds = useMemo(() => new Set(lines.map((l) => l.vendor_id)), [lines]);
+  const savedSums = useMemo(() => {
+    const m: Record<string, { amount: number; paid: number; due: number }> = {};
+    for (const l of lines) {
+      const t = (m[l.vendor_id] ??= { amount: 0, paid: 0, due: 0 });
+      t.amount += Number(l.amount);
+      t.paid += Number(l.paid_amount);
+      t.due += Number(l.due_amount);
+    }
+    return m;
+  }, [lines]);
   const isPending = (v: Vendor) => !savedIds.has(v.id) && !dirty.has(v.id);
   const pendingCount = vendors.filter(isPending).length;
   const unitOptions = useMemo(
@@ -853,7 +874,8 @@ export function DailyPurchasesScreen() {
                 {visible.map((v) => {
                   const kind = vendorKind(v);
                   const type = typeOf(v);
-                  const draft = draftSummary(v);
+                  const draft =
+                    !dirty.has(v.id) && savedSums[v.id] ? savedSums[v.id] : draftSummary(v);
                   const open = expanded.has(v.id);
                   const isDirty = dirty.has(v.id);
                   const isSaved = savedIds.has(v.id);
