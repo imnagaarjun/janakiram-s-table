@@ -2,13 +2,19 @@ import { useMemo, useState } from "react";
 import { Loader2, Plus, Save, Smartphone, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ADHOC, NumInput, Segmented, UnitSelect, inr, num, round2 } from "./shared";
+import { NumInput, Segmented, UnitSelect, inr, num, round2 } from "./shared";
 
 interface Item {
   uid: number;
@@ -21,30 +27,43 @@ interface Item {
 let uidSeq = 1;
 const blankItem = (unit = "kg"): Item => ({ uid: uidSeq++, name: "", qty: "", unit, price: "" });
 
+const ERRORS: Record<string, string> = {
+  VENDOR_EXISTS:
+    "This vendor is already in the vendor list. Open it in the list and use “Add item for today”.",
+  VENDOR_ALREADY_TODAY:
+    "This one-time vendor already has an entry today. Find it in the list and edit it there.",
+  NOT_ALLOWED: "You don't have permission to record purchases.",
+};
+
+function friendly(message: string) {
+  const key = Object.keys(ERRORS).find((k) => message.includes(k));
+  return key ? ERRORS[key] : message;
+}
+
+// Records a purchase from a vendor that is not in the vendor list. The vendor is stored as a
+// one-time vendor for the books only; the owner's vendor & product setup is never changed here.
 export function AddVendorDialog({
-  restaurantId,
   businessDate,
   existingNames,
-  nextOrder,
   unitOptions,
+  categories,
   onClose,
   onCreated,
 }: {
-  restaurantId: string;
   businessDate: string;
   existingNames: string[];
-  nextOrder: number;
   unitOptions: string[];
+  categories: { id: string; name: string }[];
   onClose: () => void;
   onCreated: (vendorName: string) => void;
 }) {
   const [name, setName] = useState("");
   const [tamil, setTamil] = useState("");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>(() => [blankItem()]);
   const [mode, setMode] = useState<"cash" | "online">("cash");
   const [full, setFull] = useState(true);
   const [paidTotal, setPaidTotal] = useState("");
-  const [keep, setKeep] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const valid = useMemo(
@@ -52,9 +71,7 @@ export function AddVendorDialog({
     [items],
   );
   const amount = round2(valid.reduce((s, i) => s + round2(num(i.qty) * num(i.price)), 0));
-  // A one-time vendor is hidden from tomorrow's list, so any credit on it would be unreachable.
-  const payFull = full || !keep;
-  const paid = payFull ? amount : Math.min(Math.max(num(paidTotal), 0), amount);
+  const paid = full ? amount : Math.min(Math.max(num(paidTotal), 0), amount);
   const due = round2(amount - paid);
   const duplicate = existingNames.some((n) => n.trim().toLowerCase() === name.trim().toLowerCase());
 
@@ -64,86 +81,43 @@ export function AddVendorDialog({
 
   async function save() {
     if (!name.trim()) return toast.error("Enter the vendor name");
-    if (duplicate)
-      return toast.error(
-        "A vendor with this name already exists. Use “+ Add item for today” on it.",
-      );
-    const partial = items.filter((i) => i.name.trim() || i.qty || i.price);
-    if (partial.some((i) => !(i.name.trim() && num(i.qty) > 0 && num(i.price) > 0)))
+    if (duplicate) return toast.error(friendly("VENDOR_EXISTS"));
+    const started = items.filter((i) => i.name.trim() || i.qty || i.price);
+    if (started.some((i) => !(i.name.trim() && num(i.qty) > 0 && num(i.price) > 0)))
       return toast.error("Each item needs a name, quantity and price (or remove the row)");
     if (valid.length === 0) return toast.error("Add at least one item");
 
+    // Part payment is applied to the lines in order.
+    let remaining = paid;
+    const lines = valid.map((i) => {
+      const a = round2(num(i.qty) * num(i.price));
+      const p = Math.min(remaining, a);
+      remaining = round2(remaining - p);
+      return {
+        description: i.name.trim(),
+        unit: i.unit,
+        qty: num(i.qty),
+        unit_price: num(i.price),
+        pay_mode: mode,
+        paid_amount: p,
+        is_adhoc: true,
+      };
+    });
+
     setSaving(true);
-    let vendorId: string | null = null;
-    try {
-      const v = await db
-        .from("vendors")
-        .insert({
-          restaurant_id: restaurantId,
-          name: name.trim(),
-          name_tamil: tamil.trim() || null,
-          is_multi_product: true,
-          is_fixed_amount: false,
-          is_active: keep,
-          display_order: nextOrder,
-        })
-        .select("id")
-        .single();
-      if (v.error) throw new Error(v.error.message);
-      vendorId = v.data.id as string;
-
-      let productIds: string[] = [];
-      if (keep) {
-        const p = await db
-          .from("vendor_products")
-          .insert(
-            valid.map((i, idx) => ({
-              restaurant_id: restaurantId,
-              vendor_id: vendorId,
-              name: i.name.trim(),
-              unit: i.unit,
-              price_mode: "variable",
-              fixed_price: null,
-              gst_applicable: false,
-              is_active: true,
-              display_order: idx,
-            })),
-          )
-          .select("id");
-        if (p.error) throw new Error(p.error.message);
-        productIds = (p.data as { id: string }[]).map((x) => x.id);
-      }
-
-      let remaining = paid;
-      const lines = valid.map((i, idx) => {
-        const a = round2(num(i.qty) * num(i.price));
-        const p = Math.min(remaining, a);
-        remaining = round2(remaining - p);
-        return {
-          vendor_product_id: keep ? (productIds[idx] ?? null) : null,
-          qty: num(i.qty),
-          unit_price: num(i.price),
-          pay_mode: mode,
-          paid_amount: p,
-          description: keep ? null : i.name.trim(),
-          note: keep ? null : ADHOC + i.unit,
-        };
-      });
-      const r = await supabase.rpc("save_vendor_day_purchases", {
-        _business_date: businessDate,
-        _vendor_id: vendorId,
-        _lines: lines,
-      });
-      if (r.error) throw new Error(r.error.message);
-      onCreated(name.trim());
-    } catch (e) {
-      if (vendorId) {
-        await db.from("vendor_products").delete().eq("vendor_id", vendorId);
-        await db.from("vendors").delete().eq("id", vendorId);
-      }
-      toast.error(e instanceof Error ? e.message : "Could not save vendor");
+    const { error } = await db.rpc("create_adhoc_vendor_purchase", {
+      _business_date: businessDate,
+      _name: name.trim(),
+      _name_tamil: tamil.trim() || null,
+      _category_id: categoryId,
+      _lines: lines,
+    });
+    if (error) {
+      toast.error(friendly(error.message));
       setSaving(false);
+      return;
     }
+    onCreated(name.trim());
   }
 
   return (
@@ -154,6 +128,12 @@ export function AddVendorDialog({
         </DialogHeader>
 
         <div className="space-y-4">
+          <p className="text-xs text-muted-foreground -mt-1">
+            For a vendor that isn&apos;t in the list. It is recorded in today&apos;s accounts as a
+            one-time vendor and does not change the vendor list; the owner can review it under
+            Vendors &amp; products.
+          </p>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="block mb-1.5">Vendor name</Label>
@@ -165,9 +145,7 @@ export function AddVendorDialog({
                 className="h-11 sm:h-9"
               />
               {duplicate && (
-                <p className="text-xs text-destructive mt-1">
-                  This vendor already exists — add the item to it from the list instead.
-                </p>
+                <p className="text-xs text-destructive mt-1">{friendly("VENDOR_EXISTS")}</p>
               )}
             </div>
             <div>
@@ -178,6 +156,26 @@ export function AddVendorDialog({
                 className="h-11 sm:h-9"
               />
             </div>
+          </div>
+
+          <div>
+            <Label className="block mb-1.5">Expense category</Label>
+            <Select
+              value={categoryId ?? "__none"}
+              onValueChange={(v) => setCategoryId(v === "__none" ? null : v)}
+            >
+              <SelectTrigger className="h-11 sm:h-9 sm:max-w-xs">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— None —</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
@@ -205,7 +203,6 @@ export function AddVendorDialog({
                         placeholder={`Item ${idx + 1} name`}
                         aria-label="Item name"
                         className="h-11 sm:h-9"
-                        autoFocus={false}
                       />
                       {items.length > 1 && (
                         <Button
@@ -279,7 +276,7 @@ export function AddVendorDialog({
             </button>
           </div>
 
-          <div className="rounded-xl border border-border p-3 space-y-3">
+          <div className="rounded-xl border border-border p-3">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               <Segmented
                 value={mode}
@@ -306,15 +303,10 @@ export function AddVendorDialog({
                 ]}
               />
               <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
-                <Switch
-                  checked={payFull}
-                  disabled={!keep}
-                  onCheckedChange={setFull}
-                  aria-label="Paid in full"
-                />
+                <Switch checked={full} onCheckedChange={setFull} aria-label="Paid in full" />
                 Paid in full
               </label>
-              {!payFull && (
+              {!full && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">Amount paid</span>
                   <div className="w-28">
@@ -323,23 +315,6 @@ export function AddVendorDialog({
                 </div>
               )}
             </div>
-
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <Switch
-                checked={keep}
-                onCheckedChange={setKeep}
-                aria-label="Keep in vendor list"
-                className="mt-0.5"
-              />
-              <span className="text-xs">
-                <span className="font-medium text-sm">Keep in my vendor list</span>
-                <span className="block text-muted-foreground">
-                  {keep
-                    ? "Vendor and items are saved, so they're ready tomorrow."
-                    : "One-time vendor: only on today's sheet, and must be paid in full."}
-                </span>
-              </span>
-            </label>
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">

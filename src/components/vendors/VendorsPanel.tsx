@@ -67,6 +67,7 @@ interface Vendor {
   phone: string | null;
   is_active: boolean;
   display_order: number;
+  is_adhoc?: boolean;
 }
 
 interface VendorProduct {
@@ -124,7 +125,11 @@ export function VendorsPanel() {
   }
 
   async function toggleActive(v: Vendor, val: boolean) {
-    const { error } = await db.from("vendors").update({ is_active: val }).eq("id", v.id);
+    // Activating a one-time vendor promotes it into the regular vendor list.
+    const { error } = await db
+      .from("vendors")
+      .update({ is_active: val, ...(val && v.is_adhoc ? { is_adhoc: false } : {}) })
+      .eq("id", v.id);
     if (error) toast.error(error.message);
     else load();
   }
@@ -279,6 +284,15 @@ export function VendorsPanel() {
                         <span className="font-semibold text-base leading-tight">{v.name}</span>
                         {v.name_tamil && (
                           <span className="text-sm text-muted-foreground">{v.name_tamil}</span>
+                        )}
+                        {v.is_adhoc && (
+                          <Badge
+                            variant="secondary"
+                            className="text-xs"
+                            title="Added by staff on a daily purchase. Turn it on to make it a regular vendor."
+                          >
+                            One-time
+                          </Badge>
                         )}
                         {!v.is_active && (
                           <Badge variant="outline" className="text-xs">

@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 import { vendorKind } from "@/components/vendors/vendorKind";
 import { mergeUnits } from "@/lib/units";
 import { AddVendorDialog } from "./AddVendorDialog";
-import { ADHOC, NumInput, Segmented, UnitSelect, inr, num, round2 } from "./shared";
+import { NumInput, Segmented, UnitSelect, inr, num, round2 } from "./shared";
 
 type PayMode = "cash" | "online";
 type Settle = "full" | "custom";
@@ -52,6 +52,7 @@ interface Vendor {
   default_category_id: string | null;
   is_active: boolean;
   display_order: number;
+  is_adhoc?: boolean;
 }
 
 interface VendorProduct {
@@ -78,6 +79,8 @@ interface PurchaseLine {
   paid_amount: number;
   due_amount: number;
   note: string | null;
+  unit: string | null;
+  is_adhoc: boolean;
 }
 
 interface DraftLine {
@@ -125,7 +128,7 @@ function paidOf(r: DraftLine, settle: Settle, fixed: boolean): number {
   return Math.min(num(r.paid_amount), a);
 }
 
-const isAdhoc = (l: PurchaseLine) => (l.note ?? "").startsWith(ADHOC);
+const isAdhoc = (l: PurchaseLine) => l.is_adhoc;
 
 function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]) {
   const mode: PayMode = (vLines[0]?.pay_mode as PayMode) ?? "cash";
@@ -171,7 +174,7 @@ function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]
       paid_amount: String(l.paid_amount),
       description: l.description ?? "",
       adhoc: true,
-      unit: (l.note ?? "").slice(ADHOC.length) || "Nos",
+      unit: l.unit || "Nos",
       uid: l.id,
     });
   }
@@ -200,6 +203,8 @@ export function DailyPurchasesScreen() {
   const [showAddVendor, setShowAddVendor] = useState(false);
   const [focusUid, setFocusUid] = useState<string | null>(null);
   const [lastPrice, setLastPrice] = useState<Record<string, number>>({});
+  const [dueVendors, setDueVendors] = useState<Vendor[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const deviceMode = useDeviceMode();
   const listRef = useRef<HTMLDivElement>(null);
   const dirtyRef = useRef(dirty);
@@ -261,6 +266,21 @@ export function DailyPurchasesScreen() {
         const extra = await db.from("vendors").select("*").in("id", missing);
         vList.push(...((extra.data ?? []) as Vendor[]));
       }
+      // One-time vendors that still owe money must stay visible in the dues tab on later days.
+      const dueRes = await db
+        .from("purchase_lines")
+        .select("vendor_id")
+        .gt("due_amount", 0)
+        .limit(5000);
+      const dueIds = [
+        ...new Set(((dueRes.data ?? []) as { vendor_id: string }[]).map((x) => x.vendor_id)),
+      ].filter((id) => !vList.some((x) => x.id === id));
+      let dueOnly: Vendor[] = [];
+      if (dueIds.length) {
+        const dv = await db.from("vendors").select("*").in("id", dueIds);
+        dueOnly = (dv.data ?? []) as Vendor[];
+      }
+      setDueVendors(dueOnly);
       setVendors(vList);
       setProducts(pList);
       setLines(lList);
@@ -294,7 +314,7 @@ export function DailyPurchasesScreen() {
       );
       if (!keep) setDirty(new Set());
       setLoading(false);
-      loadDues(vList);
+      loadDues([...vList, ...dueOnly]);
     },
     [businessDate, loadDues],
   );
@@ -302,6 +322,15 @@ export function DailyPurchasesScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    db.from("expense_categories")
+      .select("id,name")
+      .eq("is_active", true)
+      .order("display_order")
+      .order("name")
+      .then((r: { data: { id: string; name: string }[] | null }) => setCategories(r.data ?? []));
+  }, []);
 
   useEffect(() => {
     if (dirty.size === 0) return;
@@ -335,7 +364,7 @@ export function DailyPurchasesScreen() {
       ]),
     [products, drafts],
   );
-  const owing = vendors.filter((v) => (dues[v.id] ?? 0) > 0.005);
+  const owing = [...vendors, ...dueVendors].filter((v) => (dues[v.id] ?? 0) > 0.005);
 
   const q = query.trim().toLowerCase();
   const matches = (v: Vendor) =>
@@ -516,7 +545,7 @@ export function DailyPurchasesScreen() {
       pay_mode: mode,
       paid_amount: paidOf(r, settle, fixed),
       description: (r.adhoc ? r.description.trim() : r.description) || null,
-      ...(r.adhoc ? { note: ADHOC + (r.unit || "Nos") } : {}),
+      ...(r.adhoc ? { unit: r.unit || "Nos", is_adhoc: true } : {}),
     }));
     const { error } = await supabase.rpc("save_vendor_day_purchases", {
       _business_date: businessDate,
@@ -570,7 +599,7 @@ export function DailyPurchasesScreen() {
       ids.forEach((i) => n.delete(i));
       return n;
     });
-    loadDues(vendors);
+    loadDues([...vendors, ...dueVendors]);
   }
 
   async function saveVendors(list: Vendor[]) {
@@ -624,9 +653,7 @@ export function DailyPurchasesScreen() {
                 ven?.name ??
                 "-",
               qty: Number(l.qty),
-              unit:
-                products.find((p) => p.id === l.vendor_product_id)?.unit ??
-                ((l.note ?? "").startsWith(ADHOC) ? (l.note ?? "").slice(ADHOC.length) : ""),
+              unit: l.unit ?? products.find((p) => p.id === l.vendor_product_id)?.unit ?? "",
               price: Number(l.unit_price),
               amount: Number(l.amount),
               paid: Number(l.paid_amount),
@@ -1148,11 +1175,10 @@ export function DailyPurchasesScreen() {
 
       {showAddVendor && profile && (
         <AddVendorDialog
-          restaurantId={profile.restaurant_id}
           businessDate={businessDate}
           existingNames={vendors.map((x) => x.name)}
-          nextOrder={vendors.length}
           unitOptions={unitOptions}
+          categories={categories}
           onClose={() => setShowAddVendor(false)}
           onCreated={(name) => {
             setShowAddVendor(false);
@@ -1170,7 +1196,7 @@ export function DailyPurchasesScreen() {
           onClose={() => setPayDialog(null)}
           onSaved={() => {
             setPayDialog(null);
-            loadDues(vendors);
+            loadDues([...vendors, ...dueVendors]);
             db.from("purchase_lines")
               .select("*")
               .eq("business_date", businessDate)
@@ -1495,7 +1521,14 @@ function DuesView({
                 <kind.Icon className="h-[18px] w-[18px]" />
               </span>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold truncate">{v.name}</div>
+                <div className="font-semibold truncate flex items-center gap-2">
+                  {v.name}
+                  {v.is_adhoc && (
+                    <span className="shrink-0 rounded-full bg-muted px-2 py-px text-[10px] font-medium text-muted-foreground">
+                      One-time
+                    </span>
+                  )}
+                </div>
                 {v.name_tamil && (
                   <div className="text-xs text-muted-foreground truncate">{v.name_tamil}</div>
                 )}

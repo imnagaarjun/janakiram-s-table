@@ -99,6 +99,7 @@ interface PLine {
   description: string | null; qty: number; unit_price: number; amount: number;
   pay_mode: string; paid_amount: number; due_amount: number;
   category_id: string | null; vendor_product_id: string | null; note: string | null;
+  unit: string | null; is_adhoc: boolean;
 }
 interface Vendor { id: string; name: string; is_active: boolean }
 interface ExpCat { id: string; name: string }
@@ -147,9 +148,10 @@ export function DailyPurchaseReport({ range }: { range: DateRange }) {
       vendor: vMap.get(l.vendor_id) ?? "—",
       item: prod?.name ?? l.description ?? "—",
       category: l.category_id ? (cMap.get(l.category_id) ?? "—") : "—",
-      qty: Number(l.qty), unit_price: Number(l.unit_price), amount: Number(l.amount),
+      qty: Number(l.qty), unit: l.unit ?? "", unit_price: Number(l.unit_price), amount: Number(l.amount),
       pay_mode: l.pay_mode, paid: Number(l.paid_amount), due: Number(l.due_amount),
       gst: prod?.gst_applicable ? "GST" : "",
+      entry: l.is_adhoc ? "One-off" : "",
       note: l.note ?? "",
     };
   });
@@ -222,11 +224,13 @@ export function DailyPurchaseReport({ range }: { range: DateRange }) {
           { key: "category", label: "Category" },
           { key: "gst", label: "GST" },
           { key: "qty", label: "Qty", numeric: true, render: (v) => String(Number(v)) },
+          { key: "unit", label: "Unit" },
           { key: "unit_price", label: "Rate", numeric: true, render: (v) => inr(Number(v)) },
           { key: "amount", label: "Amount", numeric: true, render: (v) => inr(Number(v)) },
           { key: "pay_mode", label: "Mode" },
           { key: "paid", label: "Paid", numeric: true, render: (v) => inr(Number(v)) },
           { key: "due", label: "Due", numeric: true, render: (v) => inr(Number(v)) },
+          { key: "entry", label: "Entry" },
           { key: "note", label: "Note" },
         ]}
         rows={detail as unknown as Record<string, unknown>[]}

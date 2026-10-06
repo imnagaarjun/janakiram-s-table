@@ -11,9 +11,6 @@ import {
 import { cn } from "@/lib/utils";
 import { mergeUnits } from "@/lib/units";
 
-// Purchase lines have no unit column, so one-off items carry their unit in `note` behind this prefix.
-export const ADHOC = "adhoc|";
-
 export function num(s: string): number {
   const n = parseFloat(s);
   return isFinite(n) ? n : 0;
