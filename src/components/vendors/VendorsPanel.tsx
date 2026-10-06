@@ -7,13 +7,10 @@ import {
   ChevronDown,
   ChevronRight,
   Lock,
-  Package,
   EyeOff,
   Search,
   ChevronsUpDown,
   ChevronsDownUp,
-  Store,
-  Banknote,
   CornerDownRight,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -49,6 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { inr } from "@/lib/gst";
+import { vendorKind, type VendorKind } from "./vendorKind";
 
 interface ExpenseCategory {
   id: string;
@@ -86,39 +84,6 @@ interface VendorProduct {
 }
 
 const UNITS = ["kg", "litre", "piece", "packet", "dozen", "gram", "ml", "bundle"];
-
-// Vendor "kind" drives the colour language: accent bar, icon tile, and the tint of the product tree.
-function vendorKind(v: Vendor) {
-  if (v.is_multi_product)
-    return {
-      label: "Multi-product",
-      Icon: Package,
-      bar: "bg-primary",
-      tile: "bg-primary/10 text-primary",
-      tint: "bg-primary/[0.09]",
-      rail: "border-primary/40",
-      soft: "bg-primary/10 text-primary hover:bg-primary/20",
-    };
-  if (v.is_fixed_amount)
-    return {
-      label: "Fixed amount",
-      Icon: Banknote,
-      bar: "bg-warning",
-      tile: "bg-warning/20 text-warning-foreground",
-      tint: "bg-warning/[0.10]",
-      rail: "border-warning/50",
-      soft: "bg-warning/20 text-warning-foreground hover:bg-warning/30",
-    };
-  return {
-    label: "Single item",
-    Icon: Store,
-    bar: "bg-muted-foreground/40",
-    tile: "bg-muted text-muted-foreground",
-    tint: "bg-muted/50",
-    rail: "border-border",
-    soft: "bg-muted text-foreground hover:bg-muted/80",
-  };
-}
 
 export function VendorsPanel() {
   const { profile } = useAuth();
@@ -446,7 +411,9 @@ function VendorEditor({
   const [name, setName] = useState(existing?.name ?? "");
   const [nameTamil, setNameTamil] = useState(existing?.name_tamil ?? "");
   const [phone, setPhone] = useState(existing?.phone ?? "");
-  const [categoryId, setCategoryId] = useState<string | null>(existing?.default_category_id ?? null);
+  const [categoryId, setCategoryId] = useState<string | null>(
+    existing?.default_category_id ?? null,
+  );
   const [isMulti, setIsMulti] = useState(existing?.is_multi_product ?? false);
   const [isFixedAmount, setIsFixedAmount] = useState(existing?.is_fixed_amount ?? false);
   const [isActive, setIsActive] = useState(existing?.is_active ?? true);
@@ -476,9 +443,7 @@ function VendorEditor({
         onSaved();
       }
     } else {
-      const { error } = await db
-        .from("vendors")
-        .insert({ ...payload, display_order: nextOrder });
+      const { error } = await db.from("vendors").insert({ ...payload, display_order: nextOrder });
       if (error) toast.error(error.message);
       else {
         toast.success("Created");
@@ -593,7 +558,7 @@ function ProductsEditor({
   vendor: Vendor;
   products: VendorProduct[];
   cats: ExpenseCategory[];
-  kind: ReturnType<typeof vendorKind>;
+  kind: VendorKind;
   onReload: () => void;
 }) {
   const [editing, setEditing] = useState<VendorProduct | null>(null);

@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { inr } from "@/lib/gst";
 import { cn } from "@/lib/utils";
+import { vendorKind } from "@/components/vendors/vendorKind";
 
 type PayMode = "cash" | "online";
 
@@ -120,12 +121,7 @@ export function DailyPurchasesScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     const [v, p, l] = await Promise.all([
-      db
-        .from("vendors")
-        .select("*")
-        .eq("is_active", true)
-        .order("display_order")
-        .order("name"),
+      db.from("vendors").select("*").eq("is_active", true).order("display_order").order("name"),
       db
         .from("vendor_products")
         .select("*")
@@ -357,155 +353,212 @@ export function DailyPurchasesScreen() {
               No active vendors. Add some under More → Vendors & products.
             </div>
           ) : (
-            <div className="space-y-2">
-              {vendors.map((v) => {
-                const sum = vendorSummary(v);
-                const draft = draftSummary(v);
-                const open = expanded.has(v.id);
-                const vProds = products.filter((p) => p.vendor_id === v.id);
-                const single = drafts[v.id]?.[0];
-                return (
-                  <div
-                    key={v.id}
-                    className="rounded-2xl border border-border bg-surface overflow-hidden shadow-sm"
-                  >
-                    <div className="flex items-center gap-3 p-3">
-                      <button
-                        onClick={() => toggleExpand(v.id)}
-                        className="p-1.5 rounded hover:bg-accent shrink-0"
+            <>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-primary" /> Multi-product (has items)
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-warning" /> Fixed amount
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-muted-foreground/40" /> Single item
+                </span>
+              </div>
+              <div className="space-y-2">
+                {vendors.map((v) => {
+                  const kind = vendorKind(v);
+                  const sum = vendorSummary(v);
+                  const draft = draftSummary(v);
+                  const open = expanded.has(v.id);
+                  const vProds = products.filter((p) => p.vendor_id === v.id);
+                  const single = drafts[v.id]?.[0];
+                  return (
+                    <div
+                      key={v.id}
+                      className={cn(
+                        "relative rounded-2xl border bg-surface overflow-hidden shadow-sm transition-colors",
+                        open ? "border-primary/40 shadow-md" : "border-border",
+                      )}
+                    >
+                      <span className={`absolute inset-y-0 left-0 w-1.5 ${kind.bar}`} aria-hidden />
+                      <div
+                        className={cn("flex items-center gap-3 py-3 pl-5 pr-3", open && kind.tint)}
                       >
-                        {open ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium truncate">{v.name}</span>
-                          {v.name_tamil && (
-                            <span className="text-sm text-muted-foreground truncate">
-                              {v.name_tamil}
-                            </span>
+                        <button
+                          onClick={() => toggleExpand(v.id)}
+                          className="p-1.5 rounded hover:bg-accent shrink-0"
+                          aria-expanded={open}
+                          aria-label={`Toggle ${v.name}`}
+                        >
+                          {open ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
                           )}
-                          {v.is_multi_product && (
-                            <Badge variant="secondary" className="text-[10px]">
-                              {vProds.length} items
-                            </Badge>
-                          )}
-                          {sum.hasData && (
-                            <Badge variant="outline" className="text-[10px]">
-                              saved
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          Amount {inr(sum.amount)} · Paid {inr(sum.paid)} · Due {inr(sum.due)}
-                        </div>
-                      </div>
-                      <div className="text-right text-xs text-muted-foreground shrink-0 hidden sm:block">
-                        Carry-forward due
-                        <div className="text-amber-700 font-semibold text-sm">
-                          {inr(dues[v.id] ?? 0)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {open && (
-                      <div className="border-t border-border bg-muted/30 p-3 space-y-3">
-                        {/* Shared pay-mode at the top of the vendor */}
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            Pay mode
-                          </span>
-                          <div className="inline-flex rounded-lg border border-border overflow-hidden">
-                            <button
-                              type="button"
-                              onClick={() => setPayMode(v.id, "cash")}
-                              className={cn(
-                                "px-3 py-1.5 text-xs font-medium flex items-center gap-1",
-                                (vendorPayMode[v.id] ?? "cash") === "cash"
-                                  ? "bg-emerald-600 text-white"
-                                  : "bg-surface hover:bg-accent",
-                              )}
-                            >
-                              <Wallet className="h-3.5 w-3.5" /> Cash
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPayMode(v.id, "online")}
-                              className={cn(
-                                "px-3 py-1.5 text-xs font-medium flex items-center gap-1 border-l border-border",
-                                (vendorPayMode[v.id] ?? "cash") === "online"
-                                  ? "bg-sky-600 text-white"
-                                  : "bg-surface hover:bg-accent",
-                              )}
-                            >
-                              <Smartphone className="h-3.5 w-3.5" /> Online
-                            </button>
-                          </div>
-                        </div>
-
-                        {v.is_multi_product ? (
-                          <MultiProductGrid
-                            vendor={v}
-                            products={vProds}
-                            draft={drafts[v.id] ?? []}
-                            onChange={(i, p) => updateDraft(v.id, i, p)}
-                          />
-                        ) : v.is_fixed_amount ? (
-                          single && (
-                            <FixedAmountRow
-                              vendor={v}
-                              draft={single}
-                              onChange={(p) => updateDraft(v.id, 0, p)}
-                            />
-                          )
-                        ) : (
-                          single && (
-                            <SingleLineRow
-                              vendor={v}
-                              draft={single}
-                              onChange={(p) => updateDraft(v.id, 0, p)}
-                            />
-                          )
-                        )}
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border">
-                          <div className="text-xs text-muted-foreground space-x-3">
-                            <span>
-                              Amount: <strong>{inr(draft.amount)}</strong>
-                            </span>
-                            <span className="text-emerald-700">
-                              Cash: <strong>{inr(draft.cashTotal)}</strong>
-                            </span>
-                            <span className="text-sky-700">
-                              Online: <strong>{inr(draft.onlineTotal)}</strong>
-                            </span>
-                            <span className="text-amber-700">
-                              Due: <strong>{inr(draft.due)}</strong>
-                            </span>
-                          </div>
-                          <Button
-                            size="sm"
-                            onClick={() => saveVendor(v)}
-                            disabled={savingVendor === v.id || !dirty.has(v.id)}
-                            variant={dirty.has(v.id) ? "default" : "outline"}
-                          >
-                            {savingVendor === v.id ? (
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            ) : (
-                              <Save className="h-4 w-4 mr-2" />
+                        </button>
+                        <span
+                          className={`h-10 w-10 shrink-0 rounded-xl grid place-items-center ${kind.tile}`}
+                        >
+                          <kind.Icon className="h-5 w-5" />
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold truncate">{v.name}</span>
+                            {v.name_tamil && (
+                              <span className="text-sm text-muted-foreground truncate">
+                                {v.name_tamil}
+                              </span>
                             )}
-                            {savingVendor === v.id ? "Saving…" : dirty.has(v.id) ? "Save" : "Saved"}
-                          </Button>
+                            {v.is_multi_product && (
+                              <span className="rounded-full bg-primary/10 text-primary px-2 py-px text-[10px] font-medium">
+                                {vProds.length} items
+                              </span>
+                            )}
+                            {dirty.has(v.id) ? (
+                              <span className="rounded-full bg-warning/20 text-warning-foreground px-2 py-px text-[10px] font-medium">
+                                unsaved
+                              </span>
+                            ) : (
+                              sum.hasData && (
+                                <span className="rounded-full bg-emerald-100 text-emerald-700 px-2 py-px text-[10px] font-medium">
+                                  saved
+                                </span>
+                              )
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            <span className="font-medium">{kind.label}</span> · Amount{" "}
+                            {inr(sum.amount)} · Paid{" "}
+                            <span className={sum.paid > 0 ? "text-emerald-700 font-medium" : ""}>
+                              {inr(sum.paid)}
+                            </span>{" "}
+                            · Due{" "}
+                            <span className={sum.due > 0 ? "text-amber-700 font-medium" : ""}>
+                              {inr(sum.due)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right text-xs text-muted-foreground shrink-0 hidden sm:block">
+                          Carry-forward due
+                          <div
+                            className={cn(
+                              "font-semibold text-sm",
+                              (dues[v.id] ?? 0) > 0 ? "text-amber-700" : "text-muted-foreground",
+                            )}
+                          >
+                            {inr(dues[v.id] ?? 0)}
+                          </div>
                         </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+
+                      {open && (
+                        <div
+                          className={cn(
+                            "border-t border-border py-3 pl-5 pr-3 space-y-3",
+                            kind.tint,
+                          )}
+                        >
+                          {/* Shared pay-mode at the top of the vendor */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Pay mode
+                            </span>
+                            <div className="inline-flex rounded-lg border border-border overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => setPayMode(v.id, "cash")}
+                                className={cn(
+                                  "px-3 py-1.5 text-xs font-medium flex items-center gap-1",
+                                  (vendorPayMode[v.id] ?? "cash") === "cash"
+                                    ? "bg-emerald-600 text-white"
+                                    : "bg-surface hover:bg-accent",
+                                )}
+                              >
+                                <Wallet className="h-3.5 w-3.5" /> Cash
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPayMode(v.id, "online")}
+                                className={cn(
+                                  "px-3 py-1.5 text-xs font-medium flex items-center gap-1 border-l border-border",
+                                  (vendorPayMode[v.id] ?? "cash") === "online"
+                                    ? "bg-sky-600 text-white"
+                                    : "bg-surface hover:bg-accent",
+                                )}
+                              >
+                                <Smartphone className="h-3.5 w-3.5" /> Online
+                              </button>
+                            </div>
+                          </div>
+
+                          {v.is_multi_product ? (
+                            <div className={`ml-1 border-l-2 ${kind.rail} pl-3`}>
+                              <MultiProductGrid
+                                vendor={v}
+                                products={vProds}
+                                draft={drafts[v.id] ?? []}
+                                onChange={(i, p) => updateDraft(v.id, i, p)}
+                              />
+                            </div>
+                          ) : v.is_fixed_amount ? (
+                            single && (
+                              <FixedAmountRow
+                                vendor={v}
+                                draft={single}
+                                onChange={(p) => updateDraft(v.id, 0, p)}
+                              />
+                            )
+                          ) : (
+                            single && (
+                              <SingleLineRow
+                                vendor={v}
+                                draft={single}
+                                onChange={(p) => updateDraft(v.id, 0, p)}
+                              />
+                            )
+                          )}
+
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border">
+                            <div className="text-xs text-muted-foreground space-x-3">
+                              <span>
+                                Amount: <strong>{inr(draft.amount)}</strong>
+                              </span>
+                              <span className="text-emerald-700">
+                                Cash: <strong>{inr(draft.cashTotal)}</strong>
+                              </span>
+                              <span className="text-sky-700">
+                                Online: <strong>{inr(draft.onlineTotal)}</strong>
+                              </span>
+                              <span className="text-amber-700">
+                                Due: <strong>{inr(draft.due)}</strong>
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => saveVendor(v)}
+                              disabled={savingVendor === v.id || !dirty.has(v.id)}
+                              variant={dirty.has(v.id) ? "default" : "outline"}
+                            >
+                              {savingVendor === v.id ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <Save className="h-4 w-4 mr-2" />
+                              )}
+                              {savingVendor === v.id
+                                ? "Saving…"
+                                : dirty.has(v.id)
+                                  ? "Save"
+                                  : "Saved"}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </TabsContent>
 
@@ -596,7 +649,7 @@ function MultiProductGrid({
             const price = p.price_mode === "fixed" ? Number(p.fixed_price ?? 0) : num(r.unit_price);
             const amt = qty * price;
             return (
-              <tr key={p.id} className="border-t border-border">
+              <tr key={p.id} className="border-t border-border/60">
                 <td className="py-1 pl-1 pr-1">
                   <div className="font-medium text-xs leading-tight truncate">{p.name}</div>
                   <div className="text-[9px] text-muted-foreground leading-tight">/{p.unit}</div>
@@ -776,9 +829,7 @@ function DuesView({
   dues: Record<string, number>;
   onPay: (v: Vendor) => void;
 }) {
-  const withDue = vendors
-    .map((v) => ({ v, due: dues[v.id] ?? 0 }))
-    .sort((a, b) => b.due - a.due);
+  const withDue = vendors.map((v) => ({ v, due: dues[v.id] ?? 0 })).sort((a, b) => b.due - a.due);
   const total = withDue.reduce((s, x) => s + x.due, 0);
 
   return (
@@ -792,6 +843,14 @@ function DuesView({
       <div className="rounded-2xl border border-border bg-surface divide-y overflow-hidden">
         {withDue.map(({ v, due }) => (
           <div key={v.id} className="flex items-center gap-3 p-3">
+            <span
+              className={`h-9 w-9 shrink-0 rounded-xl grid place-items-center ${vendorKind(v).tile}`}
+            >
+              {(() => {
+                const K = vendorKind(v).Icon;
+                return <K className="h-4 w-4" />;
+              })()}
+            </span>
             <div className="flex-1 min-w-0">
               <div className="font-medium truncate">{v.name}</div>
               {v.name_tamil && (
