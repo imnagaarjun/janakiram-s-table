@@ -95,8 +95,9 @@ function vendorKind(v: Vendor) {
       Icon: Package,
       bar: "bg-primary",
       tile: "bg-primary/10 text-primary",
-      tint: "bg-primary/[0.04]",
-      rail: "border-primary/30",
+      tint: "bg-primary/[0.09]",
+      rail: "border-primary/40",
+      soft: "bg-primary/10 text-primary hover:bg-primary/20",
     };
   if (v.is_fixed_amount)
     return {
@@ -104,16 +105,18 @@ function vendorKind(v: Vendor) {
       Icon: Banknote,
       bar: "bg-warning",
       tile: "bg-warning/20 text-warning-foreground",
-      tint: "bg-warning/[0.05]",
-      rail: "border-warning/40",
+      tint: "bg-warning/[0.10]",
+      rail: "border-warning/50",
+      soft: "bg-warning/20 text-warning-foreground hover:bg-warning/30",
     };
   return {
     label: "Single item",
     Icon: Store,
     bar: "bg-muted-foreground/40",
     tile: "bg-muted text-muted-foreground",
-    tint: "bg-muted/30",
+    tint: "bg-muted/50",
     rail: "border-border",
+    soft: "bg-muted text-foreground hover:bg-muted/80",
   };
 }
 
@@ -638,12 +641,17 @@ function ProductsEditor({
       <div className="flex items-center justify-between gap-2 mb-3 pl-1">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <CornerDownRight className="h-3.5 w-3.5" />
-          Products of {vendor.name}
+          Products
           <span className="rounded-full bg-background border border-border px-2 py-px text-[10px] normal-case tracking-normal">
             {products.length}
           </span>
         </div>
-        <Button size="sm" onClick={() => setCreating(true)} className="min-h-[36px]">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setCreating(true)}
+          className={`min-h-[36px] ${kind.soft}`}
+        >
           <Plus className="h-3.5 w-3.5 mr-1" /> Add product
         </Button>
       </div>
@@ -659,12 +667,12 @@ function ProductsEditor({
             return (
               <div
                 key={p.id}
-                className={`relative flex items-start gap-2 rounded-xl border border-border bg-surface px-3 py-2 ${
+                className={`relative flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 ${
                   p.is_active ? "" : "opacity-60"
                 }`}
               >
                 <span
-                  className={`absolute -left-4 top-5 h-0 w-4 border-t-2 ${kind.rail}`}
+                  className={`absolute -left-4 top-1/2 h-0 w-4 border-t-2 ${kind.rail}`}
                   aria-hidden
                 />
                 <div className="flex-1 min-w-0">
