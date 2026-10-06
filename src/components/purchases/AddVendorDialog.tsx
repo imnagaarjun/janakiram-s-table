@@ -33,6 +33,7 @@ const ERRORS: Record<string, string> = {
   VENDOR_ALREADY_TODAY:
     "This one-time vendor already has an entry today. Find it in the list and edit it there.",
   NOT_ALLOWED: "You don't have permission to record purchases.",
+  DAY_APPROVED: "This day is approved and locked. Ask an admin or manager to make changes.",
 };
 
 function friendly(message: string) {

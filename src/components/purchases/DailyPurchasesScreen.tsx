@@ -14,6 +14,8 @@ import {
   Download,
   Search,
   Check,
+  ShieldCheck,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -30,6 +32,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useDeviceMode } from "@/hooks/use-device-mode";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -93,6 +105,34 @@ interface DraftLine {
   adhoc?: boolean;
   unit?: string;
   uid?: string;
+}
+
+interface Approval {
+  approved_by_name: string;
+  approved_at: string;
+  revised_by_name: string | null;
+  revised_at: string | null;
+}
+
+const fmtTime = (ts: string) =>
+  new Date(ts).toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+function friendlyApproval(message: string): string {
+  if (message.includes("DAY_APPROVED"))
+    return "This day is approved and locked. Ask an admin or manager to make changes.";
+  if (message.includes("NOT_ALLOWED")) return "Only an admin or manager can do this.";
+  if (message.includes("ALREADY_APPROVED")) return "This day is already approved.";
+  if (message.includes("FUTURE_DATE")) return "You can't approve a day that hasn't happened yet.";
+  if (message.includes("NOT_APPROVED")) return "This day isn't approved.";
+  return message;
 }
 
 // Column layout shared by the header and every entry row (desktop); rows stack on phones.
@@ -186,7 +226,8 @@ function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]
 }
 
 export function DailyPurchasesScreen() {
-  const { profile } = useAuth();
+  const { profile, hasRole } = useAuth();
+  const canOverride = hasRole("admin", "manager");
   const [businessDate, setBusinessDate] = useState<string>(todayIST());
   const [tab, setTab] = useState("entry");
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -204,6 +245,10 @@ export function DailyPurchasesScreen() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [exporting, setExporting] = useState(false);
+  const [approval, setApproval] = useState<Approval | null>(null);
+  const [confirmApprove, setConfirmApprove] = useState(false);
+  const [confirmReopen, setConfirmReopen] = useState(false);
+  const [approvalBusy, setApprovalBusy] = useState(false);
   const [showAddVendor, setShowAddVendor] = useState(false);
   const [focusUid, setFocusUid] = useState<string | null>(null);
   const [lastPrice, setLastPrice] = useState<Record<string, number>>({});
@@ -231,7 +276,7 @@ export function DailyPurchasesScreen() {
     async (opts?: { keepDirty?: boolean }) => {
       const keep = !!opts?.keepDirty;
       if (!keep) setLoading(true);
-      const [v, p, l, prev] = await Promise.all([
+      const [v, p, l, prev, ap] = await Promise.all([
         db.from("vendors").select("*").eq("is_active", true).order("display_order").order("name"),
         db
           .from("vendor_products")
@@ -246,6 +291,11 @@ export function DailyPurchasesScreen() {
           .lt("business_date", businessDate)
           .order("business_date", { ascending: false })
           .limit(800),
+        db
+          .from("purchase_day_approvals")
+          .select("*")
+          .eq("business_date", businessDate)
+          .maybeSingle(),
       ]);
       if (v.error) toast.error(v.error.message);
       const lp: Record<string, number> = {};
@@ -261,6 +311,7 @@ export function DailyPurchasesScreen() {
       const vList: Vendor[] = v.data ?? [];
       const pList: VendorProduct[] = p.data ?? [];
       const lList: PurchaseLine[] = l.data ?? [];
+      setApproval(ap.error ? null : ((ap.data ?? null) as Approval | null));
 
       // One-time (inactive) vendors still show on the day they were used.
       const missing = [...new Set(lList.map((x) => x.vendor_id))].filter(
@@ -574,7 +625,8 @@ export function DailyPurchasesScreen() {
       _lines: payload,
     });
     if (error) {
-      toast.error(`${v.name}: ${error.message}`);
+      toast.error(`${v.name}: ${friendlyApproval(error.message)}`);
+      if (error.message.includes("DAY_APPROVED")) refreshApproval();
       return false;
     }
     return true;
@@ -654,10 +706,49 @@ export function DailyPurchasesScreen() {
     setBusinessDate(d);
   }
 
-  async function downloadPdf() {
+  async function refreshApproval() {
+    const r = await db
+      .from("purchase_day_approvals")
+      .select("*")
+      .eq("business_date", businessDate)
+      .maybeSingle();
+    setApproval(r.error ? null : ((r.data ?? null) as Approval | null));
+  }
+
+  async function doApprove() {
+    setApprovalBusy(true);
+    const { error } = await db.rpc("approve_purchase_day", { _business_date: businessDate });
+    setApprovalBusy(false);
+    if (error) {
+      toast.error(friendlyApproval(error.message));
+      return;
+    }
+    setConfirmApprove(false);
+    toast.success("Day approved");
+    await refreshApproval();
+  }
+
+  async function doReopen() {
+    setApprovalBusy(true);
+    const { error } = await db.rpc("reopen_purchase_day", { _business_date: businessDate });
+    setApprovalBusy(false);
+    if (error) {
+      toast.error(friendlyApproval(error.message));
+      return;
+    }
+    setConfirmReopen(false);
+    toast.success("Day reopened");
+    await refreshApproval();
+  }
+
+  async function exportPdf(action: "download" | "print") {
+    if (!approval) {
+      toast.error("Approve the day first. PDF and Print are available after approval.");
+      return;
+    }
     setExporting(true);
     try {
-      const { downloadPurchasesPdf } = await import("@/lib/purchases-pdf");
+      const pdf = await import("@/lib/purchases-pdf");
       const order = new Map(vendors.map((v, i) => [v.id, i]));
       const byVendor = new Map<string, PurchaseLine[]>();
       for (const l of lines) byVendor.set(l.vendor_id, [...(byVendor.get(l.vendor_id) ?? []), l]);
@@ -683,7 +774,7 @@ export function DailyPurchasesScreen() {
             })),
           };
         });
-      await downloadPurchasesPdf({
+      const input = {
         restaurant: "Hotel Sri Janakiram",
         date: businessDate,
         groups,
@@ -691,7 +782,15 @@ export function DailyPurchasesScreen() {
         outstanding: owing
           .map((v) => ({ vendor: v.name, due: dues[v.id] ?? 0 }))
           .sort((a, b) => b.due - a.due),
-      });
+        approval: {
+          name: approval.approved_by_name,
+          at: fmtTime(approval.approved_at),
+          revisedBy: approval.revised_by_name ?? undefined,
+          revisedAt: approval.revised_at ? fmtTime(approval.revised_at) : undefined,
+        },
+      };
+      if (action === "print") await pdf.printPurchasesPdf(input);
+      else await pdf.downloadPurchasesPdf(input);
       if (dirty.size > 0)
         toast.message(`${dirty.size} unsaved vendor(s) are not included in the PDF`);
     } catch (e) {
@@ -716,6 +815,7 @@ export function DailyPurchasesScreen() {
   if (!profile) return null;
 
   const isToday = businessDate === todayIST();
+  const locked = !!approval && !canOverride;
 
   return (
     <div>
@@ -762,25 +862,97 @@ export function DailyPurchasesScreen() {
                 Today
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-10 sm:h-9"
-              onClick={downloadPdf}
-              disabled={exporting || loading}
-              aria-label="Download PDF"
-            >
-              {exporting ? (
-                <Loader2 className="h-4 w-4 animate-spin sm:mr-1.5" />
-              ) : (
-                <Download className="h-4 w-4 sm:mr-1.5" />
-              )}
-              <span className="hidden sm:inline">PDF</span>
-            </Button>
+            <span title={approval ? undefined : "Approve the day to enable PDF and Print"}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 sm:h-9"
+                onClick={() => exportPdf("download")}
+                disabled={!approval || exporting || loading}
+                aria-label="Download PDF"
+              >
+                {exporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin sm:mr-1.5" />
+                ) : (
+                  <Download className="h-4 w-4 sm:mr-1.5" />
+                )}
+                <span className="hidden sm:inline">PDF</span>
+              </Button>
+            </span>
+            <span title={approval ? undefined : "Approve the day to enable PDF and Print"}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 sm:h-9"
+                onClick={() => exportPdf("print")}
+                disabled={!approval || exporting || loading}
+                aria-label="Print"
+              >
+                <Printer className="h-4 w-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Print</span>
+              </Button>
+            </span>
           </div>
         </div>
 
         <TabsContent value="entry" className="mt-0">
+          {!loading &&
+            (approval ? (
+              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+                <div className="min-w-0 flex-1 text-sm">
+                  <div className="font-semibold text-emerald-900">
+                    Approved by {approval.approved_by_name}
+                  </div>
+                  <div className="text-xs text-emerald-800/80">
+                    {fmtTime(approval.approved_at)}
+                    {approval.revised_by_name && approval.revised_at && (
+                      <span className="text-amber-700">
+                        {" "}
+                        · Revised after approval by {approval.revised_by_name},{" "}
+                        {fmtTime(approval.revised_at)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {locked
+                      ? "This day is locked. Only an admin or manager can make changes."
+                      : "You can still edit this day as an authorised user. Changes are recorded as a revision."}
+                  </div>
+                </div>
+                {canOverride && (
+                  <Button variant="outline" size="sm" onClick={() => setConfirmReopen(true)}>
+                    Reopen
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border bg-surface px-3 py-2.5">
+                <div className="min-w-0 flex-1 text-sm">
+                  <div className="font-medium">Not approved yet</div>
+                  <div className="text-xs text-muted-foreground">
+                    PDF and Print unlock once an admin or manager approves the day.
+                  </div>
+                </div>
+                {canOverride ? (
+                  <div className="flex items-center gap-2">
+                    {dirty.size > 0 && (
+                      <span className="text-xs text-amber-700">Save changes first</span>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={() => setConfirmApprove(true)}
+                      disabled={dirty.size > 0}
+                    >
+                      <ShieldCheck className="h-4 w-4 mr-1.5" /> Approve day
+                    </Button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Waiting for approval</span>
+                )}
+              </div>
+            ))}
+
           <div className="grid grid-cols-4 gap-px bg-border rounded-2xl border border-border overflow-hidden shadow-sm mb-3">
             <Stat label="Purchases" value={inr(totals.gross)} />
             <Stat label="Cash paid" value={inr(totals.cash)} tone="text-emerald-700" />
@@ -841,17 +1013,19 @@ export function DailyPurchasesScreen() {
               )}
               <span className="hidden sm:inline">{allOpen ? "Collapse all" : "Expand all"}</span>
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-10 sm:h-9 border-primary/40 text-primary hover:text-primary"
-              onClick={() => setShowAddVendor(true)}
-              aria-label="Add vendor"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">Add vendor</span>
-              <span className="sm:hidden">Vendor</span>
-            </Button>
+            {!locked && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 sm:h-9 border-primary/40 text-primary hover:text-primary"
+                onClick={() => setShowAddVendor(true)}
+                aria-label="Add vendor"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">Add vendor</span>
+                <span className="sm:hidden">Vendor</span>
+              </Button>
+            )}
           </div>
 
           {loading ? (
@@ -966,7 +1140,13 @@ export function DailyPurchasesScreen() {
                       </button>
 
                       {open && (
-                        <div className={cn("border-t border-border pl-5 pr-3 py-2", kind.tint)}>
+                        <fieldset
+                          disabled={locked}
+                          className={cn(
+                            "block min-w-0 border-t border-border pl-5 pr-3 py-2",
+                            kind.tint,
+                          )}
+                        >
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-1">
                             <Segmented
                               value={mode}
@@ -1132,7 +1312,7 @@ export function DailyPurchasesScreen() {
                               </Button>
                             </div>
                           )}
-                        </div>
+                        </fieldset>
                       )}
                     </div>
                   );
@@ -1194,6 +1374,84 @@ export function DailyPurchasesScreen() {
           <DuesView owing={owing} dues={dues} onPay={(v) => setPayDialog(v)} />
         </TabsContent>
       </Tabs>
+
+      <AlertDialog
+        open={confirmApprove}
+        onOpenChange={(o) => !approvalBusy && setConfirmApprove(o)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Approve purchases for{" "}
+              {new Date(`${businessDate}T00:00:00`).toLocaleDateString("en-IN", {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+              ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                <p>
+                  Total <strong className="text-foreground">{inr(totals.gross)}</strong> · Cash{" "}
+                  <strong className="text-foreground">{inr(totals.cash)}</strong> · Online{" "}
+                  <strong className="text-foreground">{inr(totals.online)}</strong> · Due{" "}
+                  <strong className="text-foreground">{inr(totals.due)}</strong>
+                </p>
+                {pendingCount > 0 && (
+                  <p className="text-amber-700">
+                    {pendingCount} {pendingCount === 1 ? "vendor has" : "vendors have"} no entry for
+                    this day.
+                  </p>
+                )}
+                <p>
+                  Once approved, the sheet is locked. Only an admin or manager can change it, and
+                  your name and the time are recorded on the approval.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={approvalBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={approvalBusy}
+              onClick={(e) => {
+                e.preventDefault();
+                doApprove();
+              }}
+            >
+              {approvalBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              Approve
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmReopen} onOpenChange={(o) => !approvalBusy && setConfirmReopen(o)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reopen this day?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The approval is removed, PDF and Print are locked again, and staff can edit the sheet
+              until it is approved again. The reopening is recorded.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={approvalBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={approvalBusy}
+              onClick={(e) => {
+                e.preventDefault();
+                doReopen();
+              }}
+            >
+              {approvalBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
+              Reopen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {showAddVendor && profile && (
         <AddVendorDialog

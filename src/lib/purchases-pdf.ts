@@ -15,6 +15,7 @@ export interface PurchasesPdfInput {
   groups: { vendor: string; rows: PurchasesPdfRow[] }[];
   totals: { gross: number; cash: number; online: number; due: number };
   outstanding: { vendor: string; due: number }[];
+  approval: { name: string; at: string; revisedBy?: string; revisedAt?: string };
 }
 
 // Standard PDF fonts have no rupee glyph, so amounts are written as "Rs.".
@@ -23,7 +24,7 @@ const money = (n: number) =>
 
 const qtyFmt = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
-export async function downloadPurchasesPdf(input: PurchasesPdfInput) {
+async function buildPurchasesPdf(input: PurchasesPdfInput) {
   const [{ jsPDF }, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const autoTable = autoTableMod.default;
 
@@ -42,6 +43,10 @@ export async function downloadPurchasesPdf(input: PurchasesPdfInput) {
   doc.text(input.restaurant, margin, 44);
   doc.setFontSize(12);
   doc.text("Daily Purchases", margin, 62);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(21, 128, 61);
+  doc.text("APPROVED", pageW - margin, 44, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(90);
@@ -155,8 +160,30 @@ export async function downloadPurchasesPdf(input: PurchasesPdfInput) {
     });
   }
 
-  const pages = doc.getNumberOfPages();
   const pageH = doc.internal.pageSize.getHeight();
+  let y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 30;
+  if (y > pageH - 90) {
+    doc.addPage();
+    y = 60;
+  }
+  doc.setDrawColor(180);
+  doc.line(margin, y - 12, pageW - margin, y - 12);
+  doc.setTextColor(0);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text(`Approved by: ${input.approval.name}`, margin, y);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Approved on: ${input.approval.at}`, margin, y + 15);
+  if (input.approval.revisedBy) {
+    doc.setTextColor(180, 83, 9);
+    doc.text(
+      `Revised after approval by ${input.approval.revisedBy}${input.approval.revisedAt ? `, ${input.approval.revisedAt}` : ""}`,
+      margin,
+      y + 30,
+    );
+  }
+
+  const pages = doc.getNumberOfPages();
   doc.setFontSize(8);
   doc.setTextColor(120);
   for (let i = 1; i <= pages; i++) {
@@ -164,5 +191,29 @@ export async function downloadPurchasesPdf(input: PurchasesPdfInput) {
     doc.text(`Page ${i} of ${pages}`, pageW - margin, pageH - 18, { align: "right" });
   }
 
+  return doc;
+}
+
+export async function downloadPurchasesPdf(input: PurchasesPdfInput) {
+  const doc = await buildPurchasesPdf(input);
   doc.save(`daily-purchases-${input.date}.pdf`);
+}
+
+// Opens the browser print dialog for the same PDF, without leaving the page.
+export async function printPurchasesPdf(input: PurchasesPdfInput) {
+  const doc = await buildPurchasesPdf(input);
+  doc.autoPrint();
+  const url = URL.createObjectURL(doc.output("blob"));
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  frame.src = url;
+  frame.onload = () => {
+    frame.contentWindow?.focus();
+    frame.contentWindow?.print();
+    setTimeout(() => {
+      frame.remove();
+      URL.revokeObjectURL(url);
+    }, 60_000);
+  };
+  document.body.appendChild(frame);
 }
