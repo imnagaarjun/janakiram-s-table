@@ -8,8 +8,13 @@ import {
   ChevronRight,
   Lock,
   Package,
-  GripVertical,
   EyeOff,
+  Search,
+  ChevronsUpDown,
+  ChevronsDownUp,
+  Store,
+  Banknote,
+  CornerDownRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -82,6 +87,36 @@ interface VendorProduct {
 
 const UNITS = ["kg", "litre", "piece", "packet", "dozen", "gram", "ml", "bundle"];
 
+// Vendor "kind" drives the colour language: accent bar, icon tile, and the tint of the product tree.
+function vendorKind(v: Vendor) {
+  if (v.is_multi_product)
+    return {
+      label: "Multi-product",
+      Icon: Package,
+      bar: "bg-primary",
+      tile: "bg-primary/10 text-primary",
+      tint: "bg-primary/[0.04]",
+      rail: "border-primary/30",
+    };
+  if (v.is_fixed_amount)
+    return {
+      label: "Fixed amount",
+      Icon: Banknote,
+      bar: "bg-warning",
+      tile: "bg-warning/20 text-warning-foreground",
+      tint: "bg-warning/[0.05]",
+      rail: "border-warning/40",
+    };
+  return {
+    label: "Single item",
+    Icon: Store,
+    bar: "bg-muted-foreground/40",
+    tile: "bg-muted text-muted-foreground",
+    tint: "bg-muted/30",
+    rail: "border-border",
+  };
+}
+
 export function VendorsPanel() {
   const { profile } = useAuth();
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -92,6 +127,7 @@ export function VendorsPanel() {
   const [editing, setEditing] = useState<Vendor | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Vendor | null>(null);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,16 +192,66 @@ export function VendorsPanel() {
 
   if (!profile) return null;
 
+  const q = query.trim().toLowerCase();
+  const visibleVendors = q
+    ? vendors.filter(
+        (v) =>
+          v.name.toLowerCase().includes(q) ||
+          (v.name_tamil ?? "").toLowerCase().includes(q) ||
+          products.some(
+            (p) =>
+              p.vendor_id === v.id &&
+              (p.name.toLowerCase().includes(q) || (p.name_tamil ?? "").toLowerCase().includes(q)),
+          ),
+      )
+    : vendors;
+  const multiIds = vendors.filter((v) => v.is_multi_product).map((v) => v.id);
+  const allOpen = multiIds.length > 0 && multiIds.every((id) => expanded.has(id));
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-muted-foreground">
-          Vendors and what they supply. Multi-product vendors show an inline catalog.
-        </p>
-        <Button onClick={() => setCreating(true)} className="min-h-[44px]">
-          <Plus className="h-4 w-4 mr-2" />
-          New vendor
-        </Button>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+        <div className="relative flex-1">
+          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search vendors or products…"
+            className="pl-9 min-h-[44px]"
+          />
+        </div>
+        <div className="flex gap-2">
+          {multiIds.length > 0 && (
+            <Button
+              variant="outline"
+              className="min-h-[44px] flex-1 sm:flex-none"
+              onClick={() => setExpanded(allOpen ? new Set() : new Set(multiIds))}
+            >
+              {allOpen ? (
+                <ChevronsDownUp className="h-4 w-4 mr-2" />
+              ) : (
+                <ChevronsUpDown className="h-4 w-4 mr-2" />
+              )}
+              {allOpen ? "Collapse all" : "Expand all"}
+            </Button>
+          )}
+          <Button onClick={() => setCreating(true)} className="min-h-[44px] flex-1 sm:flex-none">
+            <Plus className="h-4 w-4 mr-2" />
+            New vendor
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-3 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-primary" /> Multi-product (has items)
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-warning" /> Fixed amount
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-muted-foreground/40" /> Single item
+        </span>
       </div>
 
       {loading ? (
@@ -176,62 +262,93 @@ export function VendorsPanel() {
         <div className="rounded-2xl border border-dashed border-border p-12 text-center text-muted-foreground">
           No vendors yet. Create your first one.
         </div>
+      ) : visibleVendors.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border p-10 text-center text-muted-foreground">
+          Nothing matches “{query}”.
+        </div>
       ) : (
-        <div className="space-y-2">
-          {vendors.map((v) => {
+        <div className="space-y-3">
+          {visibleVendors.map((v) => {
             const cat = cats.find((c) => c.id === v.default_category_id);
             const vprods = products.filter((p) => p.vendor_id === v.id);
-            const open = expanded.has(v.id);
+            const kind = vendorKind(v);
+            // a search hit on a product auto-opens its vendor
+            const open =
+              expanded.has(v.id) ||
+              (!!q &&
+                v.is_multi_product &&
+                vprods.some(
+                  (p) =>
+                    p.name.toLowerCase().includes(q) ||
+                    (p.name_tamil ?? "").toLowerCase().includes(q),
+                ));
             return (
               <div
                 key={v.id}
-                className="rounded-2xl border border-border bg-surface overflow-hidden shadow-sm"
+                className={`relative rounded-2xl border bg-surface overflow-hidden shadow-sm transition-colors ${
+                  open ? "border-primary/40 shadow-md" : "border-border"
+                } ${v.is_active ? "" : "opacity-60"}`}
               >
-                <div className="flex items-center gap-3 p-3">
-                  {v.is_multi_product ? (
-                    <button
-                      onClick={() => toggleExpand(v.id)}
-                      className="p-1.5 rounded hover:bg-accent shrink-0"
-                      aria-label="Expand"
+                <span className={`absolute inset-y-0 left-0 w-1.5 ${kind.bar}`} aria-hidden />
+
+                <div className={`flex items-start gap-3 py-3 pl-5 pr-3 ${open ? kind.tint : ""}`}>
+                  <button
+                    type="button"
+                    disabled={!v.is_multi_product}
+                    onClick={() => v.is_multi_product && toggleExpand(v.id)}
+                    className={`flex flex-1 min-w-0 items-start gap-3 text-left ${
+                      v.is_multi_product ? "cursor-pointer" : "cursor-default"
+                    }`}
+                    aria-expanded={v.is_multi_product ? open : undefined}
+                    aria-label={v.is_multi_product ? `Toggle ${v.name} products` : undefined}
+                  >
+                    <span
+                      className={`h-10 w-10 shrink-0 rounded-xl grid place-items-center ${kind.tile}`}
                     >
-                      {open ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </button>
-                  ) : (
-                    <span className="w-7" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium truncate">{v.name}</span>
-                      {v.name_tamil && (
-                        <span className="text-sm text-muted-foreground truncate">
-                          {v.name_tamil}
+                      <kind.Icon className="h-5 w-5" />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-base leading-tight">{v.name}</span>
+                        {v.name_tamil && (
+                          <span className="text-sm text-muted-foreground">{v.name_tamil}</span>
+                        )}
+                        {!v.is_active && (
+                          <Badge variant="outline" className="text-xs">
+                            <EyeOff className="h-3 w-3 mr-1" /> inactive
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-x-2 gap-y-1 flex-wrap mt-1 text-xs text-muted-foreground">
+                        <span className="font-medium">{kind.label}</span>
+                        <span aria-hidden>·</span>
+                        <span>{cat?.name ?? "No category"}</span>
+                        {v.phone && (
+                          <>
+                            <span aria-hidden>·</span>
+                            <span>{v.phone}</span>
+                          </>
+                        )}
+                      </span>
+                      {v.is_multi_product && (
+                        <span className="inline-flex items-center gap-1 mt-2 rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium">
+                          {open ? (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          )}
+                          {vprods.length} {vprods.length === 1 ? "product" : "products"}
                         </span>
                       )}
-                      {v.is_multi_product && (
-                        <Badge variant="secondary" className="text-xs">
-                          <Package className="h-3 w-3 mr-1" /> {vprods.length}
-                        </Badge>
-                      )}
-                      {!v.is_active && (
-                        <Badge variant="outline" className="text-xs">
-                          <EyeOff className="h-3 w-3 mr-1" /> inactive
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {cat?.name ?? "No category"}
-                      {v.phone ? ` · ${v.phone}` : ""}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                    </span>
+                  </button>
+
+                  <div className="flex items-center gap-0.5 shrink-0">
                     <Switch
                       checked={v.is_active}
                       onCheckedChange={(c) => toggleActive(v, c)}
                       aria-label="Active"
+                      className="mr-1"
                     />
                     <Button
                       variant="ghost"
@@ -259,6 +376,7 @@ export function VendorsPanel() {
                     vendor={v}
                     products={vprods}
                     cats={cats}
+                    kind={kind}
                     onReload={load}
                   />
                 )}
@@ -465,12 +583,14 @@ function ProductsEditor({
   vendor,
   products,
   cats,
+  kind,
   onReload,
 }: {
   restaurantId: string;
   vendor: Vendor;
   products: VendorProduct[];
   cats: ExpenseCategory[];
+  kind: ReturnType<typeof vendorKind>;
   onReload: () => void;
 }) {
   const [editing, setEditing] = useState<VendorProduct | null>(null);
@@ -514,33 +634,47 @@ function ProductsEditor({
   }
 
   return (
-    <div className="border-t border-border bg-muted/30 px-3 py-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Products ({products.length})
+    <div className={`border-t border-border ${kind.tint} pl-5 pr-3 py-3`}>
+      <div className="flex items-center justify-between gap-2 mb-3 pl-1">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <CornerDownRight className="h-3.5 w-3.5" />
+          Products of {vendor.name}
+          <span className="rounded-full bg-background border border-border px-2 py-px text-[10px] normal-case tracking-normal">
+            {products.length}
+          </span>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
+        <Button size="sm" onClick={() => setCreating(true)} className="min-h-[36px]">
           <Plus className="h-3.5 w-3.5 mr-1" /> Add product
         </Button>
       </div>
 
       {products.length === 0 ? (
-        <div className="text-xs text-muted-foreground italic py-3 text-center">
-          No products yet for this vendor.
+        <div className="rounded-xl border border-dashed border-border bg-surface/60 text-xs text-muted-foreground py-5 text-center ml-3">
+          No products yet — add the first item this vendor supplies.
         </div>
       ) : (
-        <div className="rounded-xl border border-border bg-surface divide-y overflow-hidden">
+        <div className={`ml-3 border-l-2 ${kind.rail} pl-4 space-y-2`}>
           {products.map((p) => {
             const cat = cats.find((c) => c.id === p.category_id);
             return (
-              <div key={p.id} className="flex items-center gap-3 p-2.5">
-                <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div
+                key={p.id}
+                className={`relative flex items-start gap-2 rounded-xl border border-border bg-surface px-3 py-2 ${
+                  p.is_active ? "" : "opacity-60"
+                }`}
+              >
+                <span
+                  className={`absolute -left-4 top-5 h-0 w-4 border-t-2 ${kind.rail}`}
+                  aria-hidden
+                />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm truncate">{p.name}</span>
+                  <div className="flex items-center gap-x-2 gap-y-1 flex-wrap">
+                    <span className="font-medium text-sm">{p.name}</span>
                     {p.name_tamil && (
-                      <span className="text-xs text-muted-foreground truncate">{p.name_tamil}</span>
+                      <span className="text-xs text-muted-foreground">{p.name_tamil}</span>
                     )}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1">
                     <Badge variant="outline" className="text-[10px]">
                       {p.unit}
                     </Badge>
