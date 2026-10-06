@@ -29,7 +29,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { inr } from "@/lib/gst";
+import { useDeviceMode } from "@/hooks/use-device-mode";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { vendorKind } from "@/components/vendors/vendorKind";
 
@@ -84,7 +85,7 @@ interface DraftLine {
 }
 
 // Column layout shared by the header and every entry row (desktop); rows stack on phones.
-const GRID = "sm:grid-cols-[minmax(0,1fr)_72px_88px_88px_88px]";
+const GRID = "sm:grid-cols-[minmax(0,1fr)_72px_84px_88px_84px]";
 
 function todayIST(): string {
   const d = new Date();
@@ -105,6 +106,13 @@ function num(s: string): number {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// Whole rupees without ".00" keeps narrow phone columns readable.
+const inr = (n: number) =>
+  `₹${n.toLocaleString("en-IN", {
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 function typeOf(v: Vendor): VendorType {
   return v.is_multi_product ? "multi" : v.is_fixed_amount ? "fixed" : "single";
@@ -190,6 +198,8 @@ export function DailyPurchasesScreen() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [exporting, setExporting] = useState(false);
+  const [lastPrice, setLastPrice] = useState<Record<string, number>>({});
+  const deviceMode = useDeviceMode();
   const listRef = useRef<HTMLDivElement>(null);
 
   const loadDues = useCallback(async (vList: Vendor[]) => {
@@ -205,7 +215,7 @@ export function DailyPurchasesScreen() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [v, p, l] = await Promise.all([
+    const [v, p, l, prev] = await Promise.all([
       db.from("vendors").select("*").eq("is_active", true).order("display_order").order("name"),
       db
         .from("vendor_products")
@@ -214,8 +224,24 @@ export function DailyPurchasesScreen() {
         .order("display_order")
         .order("name"),
       db.from("purchase_lines").select("*").eq("business_date", businessDate),
+      db
+        .from("purchase_lines")
+        .select("vendor_id,vendor_product_id,unit_price")
+        .lt("business_date", businessDate)
+        .order("business_date", { ascending: false })
+        .limit(800),
     ]);
     if (v.error) toast.error(v.error.message);
+    const lp: Record<string, number> = {};
+    for (const x of (prev.data ?? []) as {
+      vendor_id: string;
+      vendor_product_id: string | null;
+      unit_price: number;
+    }[]) {
+      const key = x.vendor_product_id ? `p:${x.vendor_product_id}` : `v:${x.vendor_id}`;
+      if (!(key in lp) && Number(x.unit_price) > 0) lp[key] = Number(x.unit_price);
+    }
+    setLastPrice(lp);
     const vList: Vendor[] = v.data ?? [];
     const pList: VendorProduct[] = p.data ?? [];
     const lList: PurchaseLine[] = l.data ?? [];
@@ -253,6 +279,13 @@ export function DailyPurchasesScreen() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (dirty.size === 0) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty.size]);
+
   const totals = useMemo(() => {
     let cash = 0;
     let online = 0;
@@ -279,6 +312,15 @@ export function DailyPurchasesScreen() {
     (v.name_tamil ?? "").toLowerCase().includes(q) ||
     products.some((p) => p.vendor_id === v.id && p.name.toLowerCase().includes(q));
   const visible = vendors.filter((v) => (filter === "pending" ? isPending(v) : true) && matches(v));
+  const unsavedSum = vendors
+    .filter((v) => dirty.has(v.id))
+    .reduce(
+      (a, v) => {
+        const d = draftSummary(v);
+        return { amount: a.amount + d.amount, due: a.due + d.due };
+      },
+      { amount: 0, due: 0 },
+    );
   const allOpen = visible.length > 0 && visible.every((v) => expanded.has(v.id));
 
   function onSearch(val: string) {
@@ -335,6 +377,26 @@ export function DailyPurchasesScreen() {
       arr[idx] = { ...arr[idx], ...patch };
       return { ...d, [vendorId]: arr };
     });
+  }
+
+  // Typing a quantity on an empty price pulls in the last price paid, still editable.
+  function updateRow(vendorId: string, idx: number, patch: Partial<DraftLine>, key: string) {
+    const cur = drafts[vendorId]?.[idx];
+    if (
+      cur &&
+      patch.qty !== undefined &&
+      num(patch.qty) > 0 &&
+      !cur.unit_price &&
+      patch.unit_price === undefined &&
+      lastPrice[key]
+    ) {
+      patch = { ...patch, unit_price: String(lastPrice[key]) };
+    }
+    updateDraft(vendorId, idx, patch);
+  }
+
+  function discardAll() {
+    if (window.confirm("Discard all unsaved entries?")) load();
   }
 
   function setPayMode(vendorId: string, mode: PayMode) {
@@ -546,11 +608,11 @@ export function DailyPurchasesScreen() {
               )}
             </TabsTrigger>
           </TabsList>
-          <div className="flex items-center gap-1.5">
+          <div className="flex w-full sm:w-auto items-center justify-between sm:justify-end gap-1.5">
             <Button
               variant="outline"
               size="icon"
-              className="h-9 w-9"
+              className="h-10 w-10 sm:h-9 sm:w-9"
               onClick={() => changeDate(shiftDate(businessDate, -1))}
               aria-label="Previous day"
             >
@@ -560,12 +622,12 @@ export function DailyPurchasesScreen() {
               type="date"
               value={businessDate}
               onChange={(e) => changeDate(e.target.value)}
-              className="w-[150px] h-9"
+              className="flex-1 sm:flex-none sm:w-[150px] h-10 sm:h-9"
             />
             <Button
               variant="outline"
               size="icon"
-              className="h-9 w-9"
+              className="h-10 w-10 sm:h-9 sm:w-9"
               onClick={() => changeDate(shiftDate(businessDate, 1))}
               aria-label="Next day"
             >
@@ -579,7 +641,7 @@ export function DailyPurchasesScreen() {
             <Button
               variant="outline"
               size="sm"
-              className="h-9"
+              className="h-10 sm:h-9"
               onClick={downloadPdf}
               disabled={exporting || loading}
               aria-label="Download PDF"
@@ -595,8 +657,8 @@ export function DailyPurchasesScreen() {
         </div>
 
         <TabsContent value="entry" className="mt-0">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-border rounded-2xl border border-border overflow-hidden shadow-sm mb-3">
-            <Stat label="Gross purchases" value={inr(totals.gross)} />
+          <div className="grid grid-cols-4 gap-px bg-border rounded-2xl border border-border overflow-hidden shadow-sm mb-3">
+            <Stat label="Purchases" value={inr(totals.gross)} />
             <Stat label="Cash paid" value={inr(totals.cash)} tone="text-emerald-700" />
             <Stat label="Online paid" value={inr(totals.online)} tone="text-sky-700" />
             <Stat
@@ -607,13 +669,14 @@ export function DailyPurchasesScreen() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <div className="relative flex-1 min-w-[180px]">
+            <div className="relative basis-full sm:basis-auto sm:flex-1 sm:min-w-[180px]">
               <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => onSearch(e.target.value)}
                 placeholder="Find vendor or item…"
-                className="pl-9 h-9"
+                className="pl-9 h-10 sm:h-9"
+                enterKeyHint="search"
               />
             </div>
             <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs font-medium">
@@ -621,7 +684,7 @@ export function DailyPurchasesScreen() {
                 type="button"
                 onClick={() => setFilter("all")}
                 className={cn(
-                  "px-3 h-9",
+                  "px-3 h-10 sm:h-9",
                   filter === "all" ? "bg-foreground text-background" : "bg-surface hover:bg-accent",
                 )}
               >
@@ -631,7 +694,7 @@ export function DailyPurchasesScreen() {
                 type="button"
                 onClick={() => setFilter("pending")}
                 className={cn(
-                  "px-3 h-9 border-l border-border",
+                  "px-3 h-10 sm:h-9 border-l border-border",
                   filter === "pending"
                     ? "bg-foreground text-background"
                     : "bg-surface hover:bg-accent",
@@ -640,7 +703,13 @@ export function DailyPurchasesScreen() {
                 Pending {pendingCount}
               </button>
             </div>
-            <Button variant="outline" size="sm" className="h-9" onClick={toggleAll}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 sm:h-9"
+              onClick={toggleAll}
+              aria-label={allOpen ? "Collapse all" : "Expand all"}
+            >
               {allOpen ? (
                 <ChevronsDownUp className="h-4 w-4 sm:mr-1.5" />
               ) : (
@@ -648,21 +717,6 @@ export function DailyPurchasesScreen() {
               )}
               <span className="hidden sm:inline">{allOpen ? "Collapse all" : "Expand all"}</span>
             </Button>
-            {dirty.size > 0 && (
-              <Button
-                size="sm"
-                className="h-9"
-                disabled={saving.size > 0}
-                onClick={() => saveVendors(vendors.filter((v) => dirty.has(v.id)))}
-              >
-                {saving.size > 0 ? (
-                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-1.5" />
-                )}
-                Save all ({dirty.size})
-              </Button>
-            )}
           </div>
 
           {loading ? (
@@ -680,232 +734,283 @@ export function DailyPurchasesScreen() {
                 : "No vendors match your search."}
             </div>
           ) : (
-            <div ref={listRef} onKeyDown={onListKeyDown} className="space-y-2">
-              {visible.map((v) => {
-                const kind = vendorKind(v);
-                const type = typeOf(v);
-                const draft = draftSummary(v);
-                const open = expanded.has(v.id);
-                const isDirty = dirty.has(v.id);
-                const isSaved = savedIds.has(v.id);
-                const vProds = products.filter((p) => p.vendor_id === v.id);
-                const rows = drafts[v.id] ?? [];
-                const settle = settleMap[v.id] ?? "full";
-                const mode = vendorPayMode[v.id] ?? "cash";
-                const owed = dues[v.id] ?? 0;
-                return (
-                  <div
-                    key={v.id}
-                    className={cn(
-                      "relative rounded-2xl border bg-surface overflow-hidden shadow-sm",
-                      open ? "border-primary/40" : "border-border",
-                    )}
-                  >
-                    <span className={`absolute inset-y-0 left-0 w-1.5 ${kind.bar}`} aria-hidden />
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(v.id)}
-                      aria-expanded={open}
+            <div className="@container">
+              <div ref={listRef} onKeyDown={onListKeyDown} className="@5xl:columns-2 @5xl:gap-3">
+                {visible.map((v) => {
+                  const kind = vendorKind(v);
+                  const type = typeOf(v);
+                  const draft = draftSummary(v);
+                  const open = expanded.has(v.id);
+                  const isDirty = dirty.has(v.id);
+                  const isSaved = savedIds.has(v.id);
+                  const vProds = products.filter((p) => p.vendor_id === v.id);
+                  const rows = drafts[v.id] ?? [];
+                  const settle = settleMap[v.id] ?? "full";
+                  const mode = vendorPayMode[v.id] ?? "cash";
+                  const owed = dues[v.id] ?? 0;
+                  return (
+                    <div
+                      key={v.id}
                       className={cn(
-                        "flex w-full items-center gap-3 py-2.5 pl-5 pr-3 text-left",
-                        open && kind.tint,
+                        "relative break-inside-avoid mb-2 @5xl:mb-3 rounded-2xl border bg-surface overflow-hidden shadow-sm",
+                        open ? "border-primary/40" : "border-border",
                       )}
                     >
-                      <span
-                        className={`h-9 w-9 shrink-0 rounded-xl grid place-items-center ${kind.tile}`}
+                      <span className={`absolute inset-y-0 left-0 w-1.5 ${kind.bar}`} aria-hidden />
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(v.id)}
+                        aria-expanded={open}
+                        className={cn(
+                          "flex w-full items-center gap-3 py-2.5 pl-5 pr-3 text-left",
+                          open && kind.tint,
+                        )}
                       >
-                        <kind.Icon className="h-[18px] w-[18px]" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-baseline gap-2 min-w-0">
-                          <span className="font-semibold truncate">{v.name}</span>
-                          {v.name_tamil && (
-                            <span className="text-xs text-muted-foreground truncate hidden sm:inline">
-                              {v.name_tamil}
+                        <span
+                          className={`h-9 w-9 shrink-0 rounded-xl grid place-items-center ${kind.tile}`}
+                        >
+                          <kind.Icon className="h-[18px] w-[18px]" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-baseline gap-2 min-w-0">
+                            <span className="font-semibold leading-tight line-clamp-2 sm:line-clamp-1">
+                              {v.name}
                             </span>
-                          )}
-                        </span>
-                        <span className="block text-xs text-muted-foreground truncate">
-                          {kind.label}
-                          {type === "multi" &&
-                            ` · ${vProds.length} ${vProds.length === 1 ? "item" : "items"}`}
-                        </span>
-                      </span>
-                      {owed > 0.005 && (
-                        <span className="hidden sm:block shrink-0 text-right leading-tight">
-                          <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
-                            Owed
+                            {v.name_tamil && (
+                              <span className="text-xs text-muted-foreground truncate hidden sm:inline">
+                                {v.name_tamil}
+                              </span>
+                            )}
                           </span>
-                          <span className="block text-sm font-semibold text-amber-700 tabular-nums">
-                            {inr(owed)}
+                          <span className="block text-xs text-muted-foreground truncate">
+                            {kind.label}
+                            {type === "multi" &&
+                              ` · ${vProds.length} ${vProds.length === 1 ? "item" : "items"}`}
                           </span>
                         </span>
-                      )}
-                      <span className="shrink-0 text-right leading-tight min-w-[84px]">
-                        <span className="block font-semibold tabular-nums">
-                          {draft.amount > 0 ? inr(draft.amount) : "—"}
-                        </span>
-                        <span className="block text-[11px]">
-                          {isDirty ? (
-                            <span className="text-amber-700 font-medium">Unsaved</span>
-                          ) : isSaved ? (
-                            <span className="text-emerald-700 font-medium inline-flex items-center gap-0.5">
-                              <Check className="h-3 w-3" /> Saved
+                        {owed > 0.005 && (
+                          <span className="hidden sm:block shrink-0 text-right leading-tight">
+                            <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">
+                              Owed
                             </span>
-                          ) : (
-                            <span className="text-muted-foreground">Pending</span>
-                          )}
-                          {draft.due > 0 && (
-                            <span className="text-amber-700 font-medium">
-                              {" "}
-                              · Due {inr(draft.due)}
+                            <span className="block text-sm font-semibold text-amber-700 tabular-nums">
+                              {inr(owed)}
+                            </span>
+                          </span>
+                        )}
+                        <span className="shrink-0 text-right leading-tight min-w-[64px]">
+                          {draft.amount > 0 && (
+                            <span className="block font-semibold tabular-nums">
+                              {inr(draft.amount)}
                             </span>
                           )}
+                          <span className="block text-[11px]">
+                            {isDirty ? (
+                              <span className="text-amber-700 font-medium">Unsaved</span>
+                            ) : isSaved ? (
+                              <span className="text-emerald-700 font-medium inline-flex items-center gap-0.5">
+                                <Check className="h-3 w-3" /> Saved
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">Pending</span>
+                            )}
+                            {draft.due > 0 && (
+                              <span className="text-amber-700 font-medium">
+                                {" "}
+                                · Due {inr(draft.due)}
+                              </span>
+                            )}
+                          </span>
                         </span>
-                      </span>
-                      {open ? (
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      )}
-                    </button>
+                        {open ? (
+                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        )}
+                      </button>
 
-                    {open && (
-                      <div className={cn("border-t border-border pl-5 pr-3 py-2", kind.tint)}>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-1">
-                          <Segmented
-                            value={mode}
-                            onChange={(m) => setPayMode(v.id, m)}
-                            options={[
-                              {
-                                value: "cash",
-                                label: (
-                                  <>
-                                    <Wallet className="h-3.5 w-3.5" /> Cash
-                                  </>
-                                ),
-                                active: "bg-emerald-600 text-white",
-                              },
-                              {
-                                value: "online",
-                                label: (
-                                  <>
-                                    <Smartphone className="h-3.5 w-3.5" /> Online
-                                  </>
-                                ),
-                                active: "bg-sky-600 text-white",
-                              },
-                            ]}
-                          />
-                          {type !== "fixed" && (
+                      {open && (
+                        <div className={cn("border-t border-border pl-5 pr-3 py-2", kind.tint)}>
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-1">
                             <Segmented
-                              value={settle}
-                              onChange={(s) => setSettle(v.id, s)}
+                              value={mode}
+                              onChange={(m) => setPayMode(v.id, m)}
                               options={[
                                 {
-                                  value: "full",
-                                  label: "Paid in full",
-                                  active: "bg-foreground text-background",
+                                  value: "cash",
+                                  label: (
+                                    <>
+                                      <Wallet className="h-3.5 w-3.5" /> Cash
+                                    </>
+                                  ),
+                                  active: "bg-emerald-600 text-white",
                                 },
                                 {
-                                  value: "custom",
-                                  label: "Part / credit",
-                                  active: "bg-foreground text-background",
+                                  value: "online",
+                                  label: (
+                                    <>
+                                      <Smartphone className="h-3.5 w-3.5" /> Online
+                                    </>
+                                  ),
+                                  active: "bg-sky-600 text-white",
                                 },
                               ]}
                             />
+                            {type !== "fixed" && (
+                              <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
+                                <Switch
+                                  checked={settle === "full"}
+                                  onCheckedChange={(c) => setSettle(v.id, c ? "full" : "custom")}
+                                  aria-label="Paid in full"
+                                />
+                                Paid in full
+                              </label>
+                            )}
+                          </div>
+
+                          {type === "multi" && vProds.length === 0 ? (
+                            <div className="text-xs text-muted-foreground italic py-3 text-center">
+                              No products configured for {v.name}. Add them under More → Vendors &
+                              products.
+                            </div>
+                          ) : (
+                            <div>
+                              {type !== "fixed" && (
+                                <div
+                                  className={cn(
+                                    "hidden sm:grid gap-x-2 pb-1 border-b border-border/60 text-[10px] uppercase tracking-wider text-muted-foreground",
+                                    GRID,
+                                  )}
+                                >
+                                  <span>Item</span>
+                                  <span className="text-right">Qty</span>
+                                  <span className="text-right">Price</span>
+                                  <span className="text-right">Amount</span>
+                                  <span className="text-right">Paid</span>
+                                </div>
+                              )}
+                              <div className="divide-y divide-border/60">
+                                {type === "multi"
+                                  ? vProds.map((p, idx) =>
+                                      rows[idx] ? (
+                                        <EntryRow
+                                          key={p.id}
+                                          type="multi"
+                                          name={p.name}
+                                          unit={p.unit}
+                                          locked={p.price_mode === "fixed"}
+                                          draft={rows[idx]}
+                                          settle={settle}
+                                          hintPrice={lastPrice[`p:${p.id}`]}
+                                          onChange={(patch) =>
+                                            updateRow(v.id, idx, patch, `p:${p.id}`)
+                                          }
+                                        />
+                                      ) : null,
+                                    )
+                                  : rows[0] && (
+                                      <EntryRow
+                                        type={type}
+                                        name={v.name}
+                                        draft={rows[0]}
+                                        settle={settle}
+                                        hintPrice={lastPrice[`v:${v.id}`]}
+                                        onChange={(patch) => updateRow(v.id, 0, patch, `v:${v.id}`)}
+                                      />
+                                    )}
+                              </div>
+                            </div>
+                          )}
+
+                          {isDirty && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 mt-1 border-t border-border/60">
+                              <div className="text-xs text-muted-foreground space-x-3">
+                                <span>
+                                  Amount{" "}
+                                  <strong className="text-foreground">{inr(draft.amount)}</strong>
+                                </span>
+                                <span>
+                                  Paid{" "}
+                                  <strong className="text-emerald-700">{inr(draft.paid)}</strong>
+                                </span>
+                                <span>
+                                  Due{" "}
+                                  <strong
+                                    className={draft.due > 0 ? "text-amber-700" : "text-foreground"}
+                                  >
+                                    {inr(draft.due)}
+                                  </strong>
+                                </span>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => saveVendors([v])}
+                                disabled={saving.has(v.id)}
+                              >
+                                {saving.has(v.id) ? (
+                                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                                ) : (
+                                  <Save className="h-4 w-4 mr-1.5" />
+                                )}
+                                {saving.has(v.id) ? "Saving…" : "Save"}
+                              </Button>
+                            </div>
                           )}
                         </div>
-
-                        {type === "multi" && vProds.length === 0 ? (
-                          <div className="text-xs text-muted-foreground italic py-3 text-center">
-                            No products configured for {v.name}. Add them under More → Vendors &
-                            products.
-                          </div>
-                        ) : (
-                          <div>
-                            {type !== "fixed" && (
-                              <div
-                                className={cn(
-                                  "hidden sm:grid gap-x-2 pb-1 border-b border-border/60 text-[10px] uppercase tracking-wider text-muted-foreground",
-                                  GRID,
-                                )}
-                              >
-                                <span>{type === "multi" ? "Item" : "Description"}</span>
-                                <span className="text-right">Qty</span>
-                                <span className="text-right">Price</span>
-                                <span className="text-right">Amount</span>
-                                <span className="text-right">Paid</span>
-                              </div>
-                            )}
-                            <div className="divide-y divide-border/60">
-                              {type === "multi"
-                                ? vProds.map((p, idx) =>
-                                    rows[idx] ? (
-                                      <EntryRow
-                                        key={p.id}
-                                        type="multi"
-                                        name={p.name}
-                                        unit={p.unit}
-                                        locked={p.price_mode === "fixed"}
-                                        draft={rows[idx]}
-                                        settle={settle}
-                                        onChange={(patch) => updateDraft(v.id, idx, patch)}
-                                      />
-                                    ) : null,
-                                  )
-                                : rows[0] && (
-                                    <EntryRow
-                                      type={type}
-                                      name={v.name}
-                                      draft={rows[0]}
-                                      settle={settle}
-                                      onChange={(patch) => updateDraft(v.id, 0, patch)}
-                                    />
-                                  )}
-                            </div>
-                          </div>
-                        )}
-
-                        {isDirty && (
-                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 mt-1 border-t border-border/60">
-                            <div className="text-xs text-muted-foreground space-x-3">
-                              <span>
-                                Amount{" "}
-                                <strong className="text-foreground">{inr(draft.amount)}</strong>
-                              </span>
-                              <span>
-                                Paid <strong className="text-emerald-700">{inr(draft.paid)}</strong>
-                              </span>
-                              <span>
-                                Due{" "}
-                                <strong
-                                  className={draft.due > 0 ? "text-amber-700" : "text-foreground"}
-                                >
-                                  {inr(draft.due)}
-                                </strong>
-                              </span>
-                            </div>
-                            <Button
-                              size="sm"
-                              onClick={() => saveVendors([v])}
-                              disabled={saving.has(v.id)}
-                            >
-                              {saving.has(v.id) ? (
-                                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                              ) : (
-                                <Save className="h-4 w-4 mr-1.5" />
-                              )}
-                              {saving.has(v.id) ? "Saving…" : "Save"}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+          )}
+
+          {dirty.size > 0 && (
+            <>
+              <div className="h-20" aria-hidden />
+              <div
+                className={cn(
+                  "fixed inset-x-0 z-30 px-3 pointer-events-none md:pr-6 md:pl-[calc(14rem+1.5rem)]",
+                  deviceMode === "phone"
+                    ? "bottom-[calc(68px+env(safe-area-inset-bottom))]"
+                    : "bottom-3",
+                )}
+              >
+                <div className="pointer-events-auto mx-auto max-w-6xl flex items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-surface/95 backdrop-blur shadow-lg px-3 py-2">
+                  <div className="min-w-0 text-xs">
+                    <div className="font-semibold text-sm">{dirty.size} unsaved</div>
+                    <div className="text-muted-foreground truncate">
+                      Amount {inr(unsavedSum.amount)}
+                      {unsavedSum.due > 0 && (
+                        <span className="text-amber-700"> · Due {inr(unsavedSum.due)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={discardAll}
+                      disabled={saving.size > 0}
+                    >
+                      Discard
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={saving.size > 0}
+                      onClick={() => saveVendors(vendors.filter((v) => dirty.has(v.id)))}
+                    >
+                      {saving.size > 0 ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-1.5" />
+                      )}
+                      Save all
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </TabsContent>
 
@@ -936,9 +1041,13 @@ export function DailyPurchasesScreen() {
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="bg-surface px-3 py-2.5">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("text-lg font-bold tabular-nums leading-tight", tone)}>{value}</div>
+    <div className="bg-surface px-2 sm:px-3 py-2 sm:py-2.5 min-w-0">
+      <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground truncate">
+        {label}
+      </div>
+      <div className={cn("text-sm sm:text-lg font-bold tabular-nums leading-tight truncate", tone)}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -960,7 +1069,7 @@ function Segmented<T extends string>({
           type="button"
           onClick={() => onChange(o.value)}
           className={cn(
-            "px-3 py-1.5 text-xs font-medium flex items-center gap-1",
+            "px-3 py-2 sm:py-1.5 text-xs font-medium flex items-center gap-1",
             i > 0 && "border-l border-border",
             value === o.value ? o.active : "hover:bg-accent",
           )}
@@ -975,15 +1084,22 @@ function Segmented<T extends string>({
 function Cell({
   label,
   className,
+  hideLabelOnPhone,
   children,
 }: {
   label: string;
   className?: string;
+  hideLabelOnPhone?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className={cn("flex flex-col gap-0.5 min-w-0", className)}>
-      <span className="sm:hidden text-[10px] uppercase tracking-wider text-muted-foreground">
+      <span
+        className={cn(
+          "sm:hidden text-[10px] uppercase tracking-wider text-muted-foreground",
+          hideLabelOnPhone && "hidden",
+        )}
+      >
         {label}
       </span>
       {children}
@@ -997,12 +1113,16 @@ function NumInput({
   readOnly,
   locked,
   label,
+  placeholder = "0",
+  suffix,
 }: {
   value: string;
   onChange?: (v: string) => void;
   readOnly?: boolean;
   locked?: boolean;
   label: string;
+  placeholder?: string;
+  suffix?: string;
 }) {
   return (
     <div className="relative">
@@ -1010,33 +1130,52 @@ function NumInput({
         data-entry
         type="number"
         inputMode="decimal"
+        enterKeyHint="next"
         step="0.01"
         min="0"
         value={value}
         readOnly={readOnly}
+        tabIndex={readOnly ? -1 : undefined}
         aria-label={label}
         onChange={(e) => onChange?.(e.target.value)}
         onFocus={(e) => e.target.select()}
-        placeholder="0"
+        onWheel={(e) => e.currentTarget.blur()}
+        placeholder={placeholder}
         className={cn(
-          "h-9 px-2 text-right text-sm tabular-nums",
+          "h-11 sm:h-9 px-2 text-right text-base sm:text-sm tabular-nums placeholder:text-muted-foreground/40",
+          "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           readOnly && "bg-muted/60 text-muted-foreground",
-          locked && "pr-6",
+          (locked || suffix) && "pr-7",
         )}
       />
       {locked && (
         <Lock className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
       )}
+      {suffix && !locked && (
+        <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+          {suffix}
+        </span>
+      )}
     </div>
   );
 }
 
-function ValueCell({ amount, muted }: { amount: number; muted?: boolean }) {
+function ValueCell({
+  amount,
+  muted,
+  strong,
+}: {
+  amount: number;
+  muted?: boolean;
+  strong?: boolean;
+}) {
   return (
     <div
       className={cn(
-        "h-9 flex items-center justify-end text-sm tabular-nums px-1",
-        muted ? "text-muted-foreground" : "font-medium",
+        "flex items-center justify-end tabular-nums whitespace-nowrap px-1 h-auto sm:h-9",
+        strong ? "text-base font-semibold sm:text-sm sm:font-medium" : "text-sm",
+        muted ? "text-muted-foreground" : !strong && "font-medium",
+        amount <= 0 && "text-muted-foreground/60",
       )}
     >
       {amount > 0 ? inr(amount) : "—"}
@@ -1051,6 +1190,7 @@ function EntryRow({
   locked,
   draft,
   settle,
+  hintPrice,
   onChange,
 }: {
   type: VendorType;
@@ -1059,61 +1199,85 @@ function EntryRow({
   locked?: boolean;
   draft: DraftLine;
   settle: Settle;
+  hintPrice?: number;
   onChange: (patch: Partial<DraftLine>) => void;
 }) {
   const amt = lineAmount(draft);
   const paid = paidOf(draft, settle, type === "fixed");
+  const [showNote, setShowNote] = useState(false);
+  const noteOpen = showNote || !!draft.description;
+  const hint = hintPrice ? String(hintPrice) : "0";
+
+  // Phone: name + amount on line 1, inputs on line 2. Wider screens: one aligned row.
   return (
-    <div className={cn("grid grid-cols-4 gap-x-2 gap-y-1 items-end sm:items-center py-1.5", GRID)}>
-      <div className="col-span-4 sm:col-span-1 min-w-0">
+    <div
+      className={cn(
+        "grid grid-cols-3 gap-x-2 gap-y-1 items-end sm:items-center py-2 sm:py-1.5 px-1 -mx-1 rounded-lg",
+        "hover:bg-surface/70 focus-within:bg-surface",
+        GRID,
+      )}
+    >
+      <div
+        className={cn(
+          "order-1 min-w-0 flex items-center gap-2",
+          type === "fixed" ? "col-span-3 sm:col-span-4" : "col-span-2 sm:col-span-1",
+        )}
+      >
         {type === "multi" ? (
-          <div className="flex items-baseline gap-1.5 min-w-0">
-            <span className="font-medium text-sm truncate">{name}</span>
-            <span className="text-[11px] text-muted-foreground shrink-0">/{unit}</span>
-          </div>
+          <span className="font-medium text-sm truncate" title={name}>
+            {name}
+          </span>
         ) : (
-          <Input
-            data-entry
-            value={draft.description}
-            onChange={(e) => onChange({ description: e.target.value })}
-            placeholder={type === "fixed" ? "Note (optional)" : "Description, e.g. 1 cylinder"}
-            aria-label="Description"
-            className="h-9"
-          />
+          <>
+            <span className="font-medium text-sm text-muted-foreground truncate">
+              {type === "fixed" ? "Fixed amount" : "Purchase"}
+            </span>
+            {!noteOpen && (
+              <button
+                type="button"
+                onClick={() => setShowNote(true)}
+                className="text-[11px] text-primary hover:underline shrink-0"
+              >
+                + note
+              </button>
+            )}
+          </>
         )}
       </div>
 
       {type === "fixed" ? (
-        <>
-          <div className="hidden sm:block" />
-          <div className="hidden sm:block" />
-          <Cell label="Amount" className="col-span-2 sm:col-span-1">
-            <NumInput
-              label="Amount"
-              value={draft.unit_price}
-              onChange={(v) => onChange({ unit_price: v, qty: "1", paid_amount: v })}
-            />
-          </Cell>
-          <div className="hidden sm:block" />
-        </>
+        <Cell label="Amount" className="order-2 col-span-3 sm:col-span-1">
+          <NumInput
+            label="Amount"
+            value={draft.unit_price}
+            placeholder={hint}
+            onChange={(v) => onChange({ unit_price: v, qty: "1", paid_amount: v })}
+          />
+        </Cell>
       ) : (
         <>
-          <Cell label="Qty">
-            <NumInput label="Quantity" value={draft.qty} onChange={(v) => onChange({ qty: v })} />
+          <Cell label="Amount" hideLabelOnPhone className="order-2 sm:order-4">
+            <ValueCell amount={amt} strong />
           </Cell>
-          <Cell label="Price">
+          <Cell label={unit ? `Qty (${unit})` : "Qty"} className="order-3 sm:order-2">
+            <NumInput
+              label="Quantity"
+              value={draft.qty}
+              suffix={unit}
+              onChange={(v) => onChange({ qty: v })}
+            />
+          </Cell>
+          <Cell label="Price" className="order-4 sm:order-3">
             <NumInput
               label="Price"
               value={draft.unit_price}
               readOnly={locked}
               locked={locked}
+              placeholder={hint}
               onChange={(v) => onChange({ unit_price: v })}
             />
           </Cell>
-          <Cell label="Amount">
-            <ValueCell amount={amt} />
-          </Cell>
-          <Cell label="Paid">
+          <Cell label="Paid" className={cn("order-5", settle === "full" && "hidden sm:flex")}>
             {settle === "full" ? (
               <ValueCell amount={paid} muted />
             ) : (
@@ -1125,6 +1289,21 @@ function EntryRow({
             )}
           </Cell>
         </>
+      )}
+
+      {noteOpen && type !== "multi" && (
+        <div className="order-last col-span-3 sm:col-span-5">
+          <Input
+            data-entry
+            enterKeyHint="next"
+            autoFocus={showNote && !draft.description}
+            value={draft.description}
+            onChange={(e) => onChange({ description: e.target.value })}
+            placeholder="Note (optional), e.g. 1 cylinder"
+            aria-label="Note"
+            className="h-10 sm:h-9"
+          />
+        </div>
       )}
     </div>
   );
