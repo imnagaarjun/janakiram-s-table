@@ -1,6 +1,7 @@
 export interface PurchasesPdfRow {
   item: string;
   qty: number;
+  unit?: string;
   price: number;
   amount: number;
   paid: number;
@@ -92,7 +93,7 @@ export async function downloadPurchasesPdf(input: PurchasesPdfInput) {
       d += r.due;
       body.push([
         r.item,
-        qtyFmt(r.qty),
+        `${qtyFmt(r.qty)}${r.unit ? ` ${r.unit}` : ""}`,
         money(r.price),
         money(r.amount),
         money(r.paid),

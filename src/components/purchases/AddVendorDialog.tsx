@@ -1,0 +1,377 @@
+import { useMemo, useState } from "react";
+import { Loader2, Plus, Save, Smartphone, Trash2, Wallet } from "lucide-react";
+import { toast } from "sonner";
+import { db } from "@/lib/db";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ADHOC, NumInput, Segmented, UnitSelect, inr, num, round2 } from "./shared";
+
+interface Item {
+  uid: number;
+  name: string;
+  qty: string;
+  unit: string;
+  price: string;
+}
+
+let uidSeq = 1;
+const blankItem = (unit = "kg"): Item => ({ uid: uidSeq++, name: "", qty: "", unit, price: "" });
+
+export function AddVendorDialog({
+  restaurantId,
+  businessDate,
+  existingNames,
+  nextOrder,
+  unitOptions,
+  onClose,
+  onCreated,
+}: {
+  restaurantId: string;
+  businessDate: string;
+  existingNames: string[];
+  nextOrder: number;
+  unitOptions: string[];
+  onClose: () => void;
+  onCreated: (vendorName: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [tamil, setTamil] = useState("");
+  const [items, setItems] = useState<Item[]>(() => [blankItem()]);
+  const [mode, setMode] = useState<"cash" | "online">("cash");
+  const [full, setFull] = useState(true);
+  const [paidTotal, setPaidTotal] = useState("");
+  const [keep, setKeep] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const valid = useMemo(
+    () => items.filter((i) => i.name.trim() && num(i.qty) > 0 && num(i.price) > 0),
+    [items],
+  );
+  const amount = round2(valid.reduce((s, i) => s + round2(num(i.qty) * num(i.price)), 0));
+  // A one-time vendor is hidden from tomorrow's list, so any credit on it would be unreachable.
+  const payFull = full || !keep;
+  const paid = payFull ? amount : Math.min(Math.max(num(paidTotal), 0), amount);
+  const due = round2(amount - paid);
+  const duplicate = existingNames.some((n) => n.trim().toLowerCase() === name.trim().toLowerCase());
+
+  function patch(uid: number, p: Partial<Item>) {
+    setItems((list) => list.map((i) => (i.uid === uid ? { ...i, ...p } : i)));
+  }
+
+  async function save() {
+    if (!name.trim()) return toast.error("Enter the vendor name");
+    if (duplicate)
+      return toast.error(
+        "A vendor with this name already exists. Use “+ Add item for today” on it.",
+      );
+    const partial = items.filter((i) => i.name.trim() || i.qty || i.price);
+    if (partial.some((i) => !(i.name.trim() && num(i.qty) > 0 && num(i.price) > 0)))
+      return toast.error("Each item needs a name, quantity and price (or remove the row)");
+    if (valid.length === 0) return toast.error("Add at least one item");
+
+    setSaving(true);
+    let vendorId: string | null = null;
+    try {
+      const v = await db
+        .from("vendors")
+        .insert({
+          restaurant_id: restaurantId,
+          name: name.trim(),
+          name_tamil: tamil.trim() || null,
+          is_multi_product: true,
+          is_fixed_amount: false,
+          is_active: keep,
+          display_order: nextOrder,
+        })
+        .select("id")
+        .single();
+      if (v.error) throw new Error(v.error.message);
+      vendorId = v.data.id as string;
+
+      let productIds: string[] = [];
+      if (keep) {
+        const p = await db
+          .from("vendor_products")
+          .insert(
+            valid.map((i, idx) => ({
+              restaurant_id: restaurantId,
+              vendor_id: vendorId,
+              name: i.name.trim(),
+              unit: i.unit,
+              price_mode: "variable",
+              fixed_price: null,
+              gst_applicable: false,
+              is_active: true,
+              display_order: idx,
+            })),
+          )
+          .select("id");
+        if (p.error) throw new Error(p.error.message);
+        productIds = (p.data as { id: string }[]).map((x) => x.id);
+      }
+
+      let remaining = paid;
+      const lines = valid.map((i, idx) => {
+        const a = round2(num(i.qty) * num(i.price));
+        const p = Math.min(remaining, a);
+        remaining = round2(remaining - p);
+        return {
+          vendor_product_id: keep ? (productIds[idx] ?? null) : null,
+          qty: num(i.qty),
+          unit_price: num(i.price),
+          pay_mode: mode,
+          paid_amount: p,
+          description: keep ? null : i.name.trim(),
+          note: keep ? null : ADHOC + i.unit,
+        };
+      });
+      const r = await supabase.rpc("save_vendor_day_purchases", {
+        _business_date: businessDate,
+        _vendor_id: vendorId,
+        _lines: lines,
+      });
+      if (r.error) throw new Error(r.error.message);
+      onCreated(name.trim());
+    } catch (e) {
+      if (vendorId) {
+        await db.from("vendor_products").delete().eq("vendor_id", vendorId);
+        await db.from("vendors").delete().eq("id", vendorId);
+      }
+      toast.error(e instanceof Error ? e.message : "Could not save vendor");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !saving && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Add vendor &amp; purchase</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Label className="block mb-1.5">Vendor name</Label>
+              <Input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Raja Provisions"
+                className="h-11 sm:h-9"
+              />
+              {duplicate && (
+                <p className="text-xs text-destructive mt-1">
+                  This vendor already exists — add the item to it from the list instead.
+                </p>
+              )}
+            </div>
+            <div>
+              <Label className="block mb-1.5">Name (Tamil, optional)</Label>
+              <Input
+                value={tamil}
+                onChange={(e) => setTamil(e.target.value)}
+                className="h-11 sm:h-9"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_72px_104px_84px_80px_32px] gap-2 text-[10px] uppercase tracking-wider text-muted-foreground pb-1">
+              <span>Item</span>
+              <span className="text-right">Qty</span>
+              <span>Unit</span>
+              <span className="text-right">Price</span>
+              <span className="text-right">Amount</span>
+              <span />
+            </div>
+            <div className="space-y-2">
+              {items.map((i, idx) => {
+                const a = round2(num(i.qty) * num(i.price));
+                return (
+                  <div
+                    key={i.uid}
+                    className="grid grid-cols-3 sm:grid-cols-[minmax(0,1fr)_72px_104px_84px_80px_32px] gap-2 items-end sm:items-center rounded-xl border border-border bg-muted/30 p-2 sm:border-0 sm:bg-transparent sm:p-0"
+                  >
+                    <div className="col-span-3 sm:col-span-1 flex gap-2">
+                      <Input
+                        data-entry
+                        value={i.name}
+                        onChange={(e) => patch(i.uid, { name: e.target.value })}
+                        placeholder={`Item ${idx + 1} name`}
+                        aria-label="Item name"
+                        className="h-11 sm:h-9"
+                        autoFocus={false}
+                      />
+                      {items.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="sm:hidden h-11 w-11 shrink-0 text-destructive"
+                          onClick={() => setItems((l) => l.filter((x) => x.uid !== i.uid))}
+                          aria-label="Remove item"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    <div>
+                      <span className="sm:hidden text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Qty
+                      </span>
+                      <NumInput
+                        label="Quantity"
+                        value={i.qty}
+                        onChange={(v) => patch(i.uid, { qty: v })}
+                      />
+                    </div>
+                    <div>
+                      <span className="sm:hidden text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Unit
+                      </span>
+                      <UnitSelect
+                        value={i.unit}
+                        options={unitOptions}
+                        onChange={(u) => patch(i.uid, { unit: u })}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <span className="sm:hidden text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Price
+                      </span>
+                      <NumInput
+                        label="Price"
+                        value={i.price}
+                        onChange={(v) => patch(i.uid, { price: v })}
+                      />
+                    </div>
+                    <div className="col-span-3 sm:col-span-1 text-right text-sm font-semibold tabular-nums sm:font-medium">
+                      {a > 0 ? inr(a) : <span className="text-muted-foreground/60">—</span>}
+                    </div>
+                    {items.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="hidden sm:inline-flex h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => setItems((l) => l.filter((x) => x.uid !== i.uid))}
+                        aria-label="Remove item"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setItems((l) => [...l, blankItem(l[l.length - 1]?.unit)])}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 py-2 text-xs font-medium text-primary hover:bg-primary/5"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add another item
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-border p-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <Segmented
+                value={mode}
+                onChange={setMode}
+                options={[
+                  {
+                    value: "cash",
+                    label: (
+                      <>
+                        <Wallet className="h-3.5 w-3.5" /> Cash
+                      </>
+                    ),
+                    active: "bg-emerald-600 text-white",
+                  },
+                  {
+                    value: "online",
+                    label: (
+                      <>
+                        <Smartphone className="h-3.5 w-3.5" /> Online
+                      </>
+                    ),
+                    active: "bg-sky-600 text-white",
+                  },
+                ]}
+              />
+              <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer select-none">
+                <Switch
+                  checked={payFull}
+                  disabled={!keep}
+                  onCheckedChange={setFull}
+                  aria-label="Paid in full"
+                />
+                Paid in full
+              </label>
+              {!payFull && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Amount paid</span>
+                  <div className="w-28">
+                    <NumInput label="Amount paid" value={paidTotal} onChange={setPaidTotal} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <Switch
+                checked={keep}
+                onCheckedChange={setKeep}
+                aria-label="Keep in vendor list"
+                className="mt-0.5"
+              />
+              <span className="text-xs">
+                <span className="font-medium text-sm">Keep in my vendor list</span>
+                <span className="block text-muted-foreground">
+                  {keep
+                    ? "Vendor and items are saved, so they're ready tomorrow."
+                    : "One-time vendor: only on today's sheet, and must be paid in full."}
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm space-x-3">
+              <span>
+                Total <strong className="tabular-nums">{inr(amount)}</strong>
+              </span>
+              <span className="text-emerald-700">
+                Paid <strong className="tabular-nums">{inr(paid)}</strong>
+              </span>
+              {due > 0 && (
+                <span className="text-amber-700">
+                  Due <strong className="tabular-nums">{inr(due)}</strong>
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2 ml-auto">
+              <Button variant="ghost" onClick={onClose} disabled={saving}>
+                Cancel
+              </Button>
+              <Button onClick={save} disabled={saving}>
+                {saving ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1.5" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Loader2,
   Save,
-  Lock,
+  Plus,
+  Trash2,
   ChevronDown,
   ChevronRight,
   ChevronLeft,
@@ -33,6 +34,9 @@ import { useDeviceMode } from "@/hooks/use-device-mode";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { vendorKind } from "@/components/vendors/vendorKind";
+import { mergeUnits } from "@/lib/units";
+import { AddVendorDialog } from "./AddVendorDialog";
+import { ADHOC, NumInput, Segmented, UnitSelect, inr, num, round2 } from "./shared";
 
 type PayMode = "cash" | "online";
 type Settle = "full" | "custom";
@@ -73,6 +77,7 @@ interface PurchaseLine {
   pay_mode: PayMode;
   paid_amount: number;
   due_amount: number;
+  note: string | null;
 }
 
 interface DraftLine {
@@ -82,6 +87,9 @@ interface DraftLine {
   pay_mode: PayMode;
   paid_amount: string;
   description: string;
+  adhoc?: boolean;
+  unit?: string;
+  uid?: string;
 }
 
 // Column layout shared by the header and every entry row (desktop); rows stack on phones.
@@ -100,20 +108,6 @@ function shiftDate(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function num(s: string): number {
-  const n = parseFloat(s);
-  return isFinite(n) ? n : 0;
-}
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
-// Whole rupees without ".00" keeps narrow phone columns readable.
-const inr = (n: number) =>
-  `₹${n.toLocaleString("en-IN", {
-    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
-    maximumFractionDigits: 2,
-  })}`;
-
 function typeOf(v: Vendor): VendorType {
   return v.is_multi_product ? "multi" : v.is_fixed_amount ? "fixed" : "single";
 }
@@ -127,9 +121,11 @@ function lineAmount(r: DraftLine): number {
 function paidOf(r: DraftLine, settle: Settle, fixed: boolean): number {
   const a = lineAmount(r);
   if (a <= 0) return 0;
-  if (fixed || settle === "full") return a;
+  if ((fixed && !r.adhoc) || settle === "full") return a;
   return Math.min(num(r.paid_amount), a);
 }
+
+const isAdhoc = (l: PurchaseLine) => (l.note ?? "").startsWith(ADHOC);
 
 function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]) {
   const mode: PayMode = (vLines[0]?.pay_mode as PayMode) ?? "cash";
@@ -137,10 +133,12 @@ function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]
     vLines.length === 0 || vLines.every((l) => Number(l.paid_amount) >= Number(l.amount))
       ? "full"
       : "custom";
+  const base = vLines.filter((l) => !isAdhoc(l));
+  const extra = vLines.filter(isAdhoc);
   let rows: DraftLine[];
   if (ven.is_multi_product) {
     rows = vProds.map((pr) => {
-      const ex = vLines.find((x) => x.vendor_product_id === pr.id);
+      const ex = base.find((x) => x.vendor_product_id === pr.id);
       return {
         vendor_product_id: pr.id,
         qty: ex ? String(ex.qty) : "",
@@ -151,30 +149,31 @@ function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]
         description: "",
       };
     });
-  } else if (ven.is_fixed_amount) {
-    const ex = vLines[0];
-    rows = [
-      {
-        vendor_product_id: null,
-        qty: "1",
-        unit_price: ex ? String(ex.amount) : "",
-        pay_mode: ex?.pay_mode ?? "cash",
-        paid_amount: ex ? String(ex.paid_amount) : "",
-        description: ex?.description ?? "",
-      },
-    ];
   } else {
-    const ex = vLines[0];
+    const ex = base[0];
     rows = [
       {
         vendor_product_id: null,
-        qty: ex ? String(ex.qty) : "",
-        unit_price: ex ? String(ex.unit_price) : "",
+        qty: ven.is_fixed_amount ? "1" : ex ? String(ex.qty) : "",
+        unit_price: ex ? String(ven.is_fixed_amount ? ex.amount : ex.unit_price) : "",
         pay_mode: ex?.pay_mode ?? "cash",
         paid_amount: ex ? String(ex.paid_amount) : "",
         description: ex?.description ?? "",
       },
     ];
+  }
+  for (const l of extra) {
+    rows.push({
+      vendor_product_id: null,
+      qty: String(l.qty),
+      unit_price: String(l.unit_price),
+      pay_mode: l.pay_mode,
+      paid_amount: String(l.paid_amount),
+      description: l.description ?? "",
+      adhoc: true,
+      unit: (l.note ?? "").slice(ADHOC.length) || "Nos",
+      uid: l.id,
+    });
   }
   return { rows, mode, settle };
 }
@@ -198,9 +197,15 @@ export function DailyPurchasesScreen() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [exporting, setExporting] = useState(false);
+  const [showAddVendor, setShowAddVendor] = useState(false);
+  const [focusUid, setFocusUid] = useState<string | null>(null);
   const [lastPrice, setLastPrice] = useState<Record<string, number>>({});
   const deviceMode = useDeviceMode();
   const listRef = useRef<HTMLDivElement>(null);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const vendorsRef = useRef(vendors);
+  vendorsRef.current = vendors;
 
   const loadDues = useCallback(async (vList: Vendor[]) => {
     const map: Record<string, number> = {};
@@ -213,67 +218,86 @@ export function DailyPurchasesScreen() {
     setDues(map);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [v, p, l, prev] = await Promise.all([
-      db.from("vendors").select("*").eq("is_active", true).order("display_order").order("name"),
-      db
-        .from("vendor_products")
-        .select("*")
-        .eq("is_active", true)
-        .order("display_order")
-        .order("name"),
-      db.from("purchase_lines").select("*").eq("business_date", businessDate),
-      db
-        .from("purchase_lines")
-        .select("vendor_id,vendor_product_id,unit_price")
-        .lt("business_date", businessDate)
-        .order("business_date", { ascending: false })
-        .limit(800),
-    ]);
-    if (v.error) toast.error(v.error.message);
-    const lp: Record<string, number> = {};
-    for (const x of (prev.data ?? []) as {
-      vendor_id: string;
-      vendor_product_id: string | null;
-      unit_price: number;
-    }[]) {
-      const key = x.vendor_product_id ? `p:${x.vendor_product_id}` : `v:${x.vendor_id}`;
-      if (!(key in lp) && Number(x.unit_price) > 0) lp[key] = Number(x.unit_price);
-    }
-    setLastPrice(lp);
-    const vList: Vendor[] = v.data ?? [];
-    const pList: VendorProduct[] = p.data ?? [];
-    const lList: PurchaseLine[] = l.data ?? [];
-    setVendors(vList);
-    setProducts(pList);
-    setLines(lList);
+  const load = useCallback(
+    async (opts?: { keepDirty?: boolean }) => {
+      const keep = !!opts?.keepDirty;
+      if (!keep) setLoading(true);
+      const [v, p, l, prev] = await Promise.all([
+        db.from("vendors").select("*").eq("is_active", true).order("display_order").order("name"),
+        db
+          .from("vendor_products")
+          .select("*")
+          .eq("is_active", true)
+          .order("display_order")
+          .order("name"),
+        db.from("purchase_lines").select("*").eq("business_date", businessDate),
+        db
+          .from("purchase_lines")
+          .select("vendor_id,vendor_product_id,unit_price")
+          .lt("business_date", businessDate)
+          .order("business_date", { ascending: false })
+          .limit(800),
+      ]);
+      if (v.error) toast.error(v.error.message);
+      const lp: Record<string, number> = {};
+      for (const x of (prev.data ?? []) as {
+        vendor_id: string;
+        vendor_product_id: string | null;
+        unit_price: number;
+      }[]) {
+        const key = x.vendor_product_id ? `p:${x.vendor_product_id}` : `v:${x.vendor_id}`;
+        if (!(key in lp) && Number(x.unit_price) > 0) lp[key] = Number(x.unit_price);
+      }
+      setLastPrice(lp);
+      const vList: Vendor[] = v.data ?? [];
+      const pList: VendorProduct[] = p.data ?? [];
+      const lList: PurchaseLine[] = l.data ?? [];
 
-    const d: Record<string, DraftLine[]> = {};
-    const vp: Record<string, PayMode> = {};
-    const st: Record<string, Settle> = {};
-    const open = new Set<string>();
-    for (const ven of vList) {
-      const vLines = lList.filter((x) => x.vendor_id === ven.id);
-      const b = buildDraft(
-        ven,
-        pList.filter((x) => x.vendor_id === ven.id),
-        vLines,
+      // One-time (inactive) vendors still show on the day they were used.
+      const missing = [...new Set(lList.map((x) => x.vendor_id))].filter(
+        (id) => !vList.some((x) => x.id === id),
       );
-      d[ven.id] = b.rows;
-      vp[ven.id] = b.mode;
-      st[ven.id] = b.settle;
-      // Work-in-progress first: only vendors with nothing saved today start open.
-      if (vLines.length === 0) open.add(ven.id);
-    }
-    setDrafts(d);
-    setVendorPayMode(vp);
-    setSettleMap(st);
-    setExpanded(open);
-    setDirty(new Set());
-    setLoading(false);
-    loadDues(vList);
-  }, [businessDate, loadDues]);
+      if (missing.length) {
+        const extra = await db.from("vendors").select("*").in("id", missing);
+        vList.push(...((extra.data ?? []) as Vendor[]));
+      }
+      setVendors(vList);
+      setProducts(pList);
+      setLines(lList);
+
+      const d: Record<string, DraftLine[]> = {};
+      const vp: Record<string, PayMode> = {};
+      const st: Record<string, Settle> = {};
+      const open = new Set<string>();
+      for (const ven of vList) {
+        const vLines = lList.filter((x) => x.vendor_id === ven.id);
+        const b = buildDraft(
+          ven,
+          pList.filter((x) => x.vendor_id === ven.id),
+          vLines,
+        );
+        d[ven.id] = b.rows;
+        vp[ven.id] = b.mode;
+        st[ven.id] = b.settle;
+        // Work-in-progress first: only vendors with nothing saved today start open.
+        if (vLines.length === 0) open.add(ven.id);
+      }
+      const keepIds = [...dirtyRef.current];
+      const pick = <T,>(prev: Record<string, T>) =>
+        Object.fromEntries(keepIds.filter((id) => id in prev).map((id) => [id, prev[id]]));
+      setDrafts((prev) => (keep ? { ...d, ...pick(prev) } : d));
+      setVendorPayMode((prev) => (keep ? { ...vp, ...pick(prev) } : vp));
+      setSettleMap((prev) => (keep ? { ...st, ...pick(prev) } : st));
+      const known = new Set(vendorsRef.current.map((x) => x.id));
+      setExpanded((prev) =>
+        keep ? new Set([...prev, ...[...open].filter((id) => !known.has(id))]) : open,
+      );
+      if (!keep) setDirty(new Set());
+      setLoading(false);
+      loadDues(vList);
+    },
+    [businessDate, loadDues],
+  );
 
   useEffect(() => {
     load();
@@ -303,6 +327,14 @@ export function DailyPurchasesScreen() {
   const savedIds = useMemo(() => new Set(lines.map((l) => l.vendor_id)), [lines]);
   const isPending = (v: Vendor) => !savedIds.has(v.id) && !dirty.has(v.id);
   const pendingCount = vendors.filter(isPending).length;
+  const unitOptions = useMemo(
+    () =>
+      mergeUnits([
+        ...products.map((p) => p.unit),
+        ...Object.values(drafts).flatMap((rows) => rows.map((r) => r.unit)),
+      ]),
+    [products, drafts],
+  );
   const owing = vendors.filter((v) => (dues[v.id] ?? 0) > 0.005);
 
   const q = query.trim().toLowerCase();
@@ -431,20 +463,61 @@ export function DailyPurchasesScreen() {
     return { amount, paid, due: round2(amount - paid) };
   }
 
+  function baseCount(v: Vendor) {
+    return typeOf(v) === "multi" ? products.filter((p) => p.vendor_id === v.id).length : 1;
+  }
+
+  function addAdhoc(v: Vendor) {
+    markDirty(v.id);
+    const uid = `a${Date.now()}`;
+    setFocusUid(uid);
+    setExpanded((s) => new Set(s).add(v.id));
+    setDrafts((d) => {
+      const cur = d[v.id] ?? [];
+      const lastUnit = [...cur].reverse().find((r) => r.adhoc)?.unit ?? "Nos";
+      return {
+        ...d,
+        [v.id]: [
+          ...cur,
+          {
+            vendor_product_id: null,
+            qty: "",
+            unit_price: "",
+            pay_mode: "cash",
+            paid_amount: "",
+            description: "",
+            adhoc: true,
+            unit: lastUnit,
+            uid,
+          },
+        ],
+      };
+    });
+  }
+
+  function removeAdhoc(vendorId: string, idx: number) {
+    markDirty(vendorId);
+    setDrafts((d) => ({ ...d, [vendorId]: (d[vendorId] ?? []).filter((_, i) => i !== idx) }));
+  }
+
   async function persistVendor(v: Vendor): Promise<boolean> {
     const settle = settleMap[v.id] ?? "full";
     const mode = vendorPayMode[v.id] ?? "cash";
     const fixed = typeOf(v) === "fixed";
-    const payload = (drafts[v.id] ?? [])
-      .filter((r) => lineAmount(r) > 0)
-      .map((r) => ({
-        vendor_product_id: r.vendor_product_id,
-        qty: num(r.qty),
-        unit_price: num(r.unit_price),
-        pay_mode: mode,
-        paid_amount: paidOf(r, settle, fixed),
-        description: r.description || null,
-      }));
+    const rows = (drafts[v.id] ?? []).filter((r) => lineAmount(r) > 0);
+    if (rows.some((r) => r.adhoc && !r.description.trim())) {
+      toast.error(`${v.name}: give the item you added a name`);
+      return false;
+    }
+    const payload = rows.map((r) => ({
+      vendor_product_id: r.vendor_product_id,
+      qty: num(r.qty),
+      unit_price: num(r.unit_price),
+      pay_mode: mode,
+      paid_amount: paidOf(r, settle, fixed),
+      description: (r.adhoc ? r.description.trim() : r.description) || null,
+      ...(r.adhoc ? { note: ADHOC + (r.unit || "Nos") } : {}),
+    }));
     const { error } = await supabase.rpc("save_vendor_day_purchases", {
       _business_date: businessDate,
       _vendor_id: v.id,
@@ -551,6 +624,9 @@ export function DailyPurchasesScreen() {
                 ven?.name ??
                 "-",
               qty: Number(l.qty),
+              unit:
+                products.find((p) => p.id === l.vendor_product_id)?.unit ??
+                ((l.note ?? "").startsWith(ADHOC) ? (l.note ?? "").slice(ADHOC.length) : ""),
               price: Number(l.unit_price),
               amount: Number(l.amount),
               paid: Number(l.paid_amount),
@@ -717,6 +793,17 @@ export function DailyPurchasesScreen() {
               )}
               <span className="hidden sm:inline">{allOpen ? "Collapse all" : "Expand all"}</span>
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10 sm:h-9 border-primary/40 text-primary hover:text-primary"
+              onClick={() => setShowAddVendor(true)}
+              aria-label="Add vendor"
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              <span className="hidden sm:inline">Add vendor</span>
+              <span className="sm:hidden">Vendor</span>
+            </Button>
           </div>
 
           {loading ? (
@@ -870,8 +957,8 @@ export function DailyPurchasesScreen() {
 
                           {type === "multi" && vProds.length === 0 ? (
                             <div className="text-xs text-muted-foreground italic py-3 text-center">
-                              No products configured for {v.name}. Add them under More → Vendors &
-                              products.
+                              No saved products for {v.name} yet. Add today's items below, or save
+                              products under More → Vendors &amp; products.
                             </div>
                           ) : (
                             <div>
@@ -921,6 +1008,46 @@ export function DailyPurchasesScreen() {
                               </div>
                             </div>
                           )}
+
+                          {rows.length > baseCount(v) && (
+                            <div className="mt-1 border-t border-dashed border-primary/30">
+                              {(type === "fixed" || (type === "multi" && vProds.length === 0)) && (
+                                <div
+                                  className={cn(
+                                    "hidden sm:grid gap-x-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground",
+                                    GRID,
+                                  )}
+                                >
+                                  <span>Item</span>
+                                  <span className="text-right">Qty</span>
+                                  <span className="text-right">Price</span>
+                                  <span className="text-right">Amount</span>
+                                  <span className="text-right">Paid</span>
+                                </div>
+                              )}
+                              <div className="divide-y divide-border/60">
+                                {rows.slice(baseCount(v)).map((r, i) => (
+                                  <AdhocRow
+                                    key={r.uid ?? i}
+                                    draft={r}
+                                    unitOptions={unitOptions}
+                                    settle={settle}
+                                    focus={r.uid === focusUid}
+                                    onChange={(patch) => updateDraft(v.id, baseCount(v) + i, patch)}
+                                    onRemove={() => removeAdhoc(v.id, baseCount(v) + i)}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => addAdhoc(v)}
+                            className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-primary/40 py-2 text-xs font-medium text-primary hover:bg-primary/5"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Add item for today
+                          </button>
 
                           {isDirty && (
                             <div className="flex flex-wrap items-center justify-between gap-2 pt-2 mt-1 border-t border-border/60">
@@ -1019,6 +1146,22 @@ export function DailyPurchasesScreen() {
         </TabsContent>
       </Tabs>
 
+      {showAddVendor && profile && (
+        <AddVendorDialog
+          restaurantId={profile.restaurant_id}
+          businessDate={businessDate}
+          existingNames={vendors.map((x) => x.name)}
+          nextOrder={vendors.length}
+          unitOptions={unitOptions}
+          onClose={() => setShowAddVendor(false)}
+          onCreated={(name) => {
+            setShowAddVendor(false);
+            toast.success(`${name} added`);
+            load({ keepDirty: true });
+          }}
+        />
+      )}
+
       {payDialog && (
         <PaymentDialog
           vendor={payDialog}
@@ -1052,35 +1195,6 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: str
   );
 }
 
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; label: React.ReactNode; active: string }[];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-lg border border-border overflow-hidden bg-surface">
-      {options.map((o, i) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "px-3 py-2 sm:py-1.5 text-xs font-medium flex items-center gap-1",
-            i > 0 && "border-l border-border",
-            value === o.value ? o.active : "hover:bg-accent",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function Cell({
   label,
   className,
@@ -1107,62 +1221,6 @@ function Cell({
   );
 }
 
-function NumInput({
-  value,
-  onChange,
-  readOnly,
-  locked,
-  label,
-  placeholder = "0",
-  suffix,
-}: {
-  value: string;
-  onChange?: (v: string) => void;
-  readOnly?: boolean;
-  locked?: boolean;
-  label: string;
-  placeholder?: string;
-  suffix?: string;
-}) {
-  return (
-    <div className="relative">
-      <Input
-        data-entry
-        type="number"
-        inputMode="decimal"
-        enterKeyHint="next"
-        step="0.01"
-        min="0"
-        value={value}
-        readOnly={readOnly}
-        tabIndex={readOnly ? -1 : undefined}
-        aria-label={label}
-        onChange={(e) => onChange?.(e.target.value)}
-        onFocus={(e) => e.target.select()}
-        onWheel={(e) => e.currentTarget.blur()}
-        placeholder={placeholder}
-        style={
-          suffix && !locked ? { paddingRight: Math.min(suffix.length * 6 + 14, 54) } : undefined
-        }
-        className={cn(
-          "h-11 sm:h-9 px-2 text-right text-base sm:text-sm tabular-nums placeholder:text-muted-foreground/40",
-          "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
-          readOnly && "bg-muted/60 text-muted-foreground",
-          locked && "pr-7",
-        )}
-      />
-      {locked && (
-        <Lock className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-      )}
-      {suffix && !locked && (
-        <span className="pointer-events-none absolute right-1.5 top-1/2 max-w-[3rem] truncate -translate-y-1/2 text-[10px] text-muted-foreground">
-          {suffix}
-        </span>
-      )}
-    </div>
-  );
-}
-
 function ValueCell({
   amount,
   muted,
@@ -1182,6 +1240,89 @@ function ValueCell({
       )}
     >
       {amount > 0 ? inr(amount) : "—"}
+    </div>
+  );
+}
+
+function AdhocRow({
+  draft,
+  unitOptions,
+  settle,
+  focus,
+  onChange,
+  onRemove,
+}: {
+  draft: DraftLine;
+  unitOptions: string[];
+  settle: Settle;
+  focus: boolean;
+  onChange: (patch: Partial<DraftLine>) => void;
+  onRemove: () => void;
+}) {
+  const unit = draft.unit ?? "Nos";
+  const amt = lineAmount(draft);
+  const paid = paidOf(draft, settle, false);
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-3 gap-x-2 gap-y-1 items-end sm:items-center py-2 sm:py-1.5 px-1 -mx-1 rounded-lg",
+        "border-l-2 border-dashed border-primary/40 hover:bg-surface/70 focus-within:bg-surface",
+        GRID,
+      )}
+    >
+      <div className="order-1 col-span-3 sm:col-span-5 flex items-center gap-1.5 min-w-0">
+        <Input
+          data-entry
+          autoFocus={focus}
+          enterKeyHint="next"
+          value={draft.description}
+          onChange={(e) => onChange({ description: e.target.value })}
+          placeholder="Item name (today only)"
+          aria-label="Item name"
+          className="h-11 sm:h-9 flex-1 min-w-0"
+        />
+        <UnitSelect
+          value={unit}
+          options={unitOptions}
+          onChange={(u) => onChange({ unit: u })}
+          className="w-[96px] shrink-0"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-11 w-11 sm:h-9 sm:w-9 shrink-0 text-muted-foreground hover:text-destructive"
+          onClick={onRemove}
+          aria-label="Remove item"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="hidden sm:block order-2" />
+      <Cell label={`Qty (${unit})`} className="order-3">
+        <NumInput label="Quantity" value={draft.qty} onChange={(v) => onChange({ qty: v })} />
+      </Cell>
+      <Cell label="Price" className="order-4">
+        <NumInput
+          label="Price"
+          value={draft.unit_price}
+          onChange={(v) => onChange({ unit_price: v })}
+        />
+      </Cell>
+      <Cell label="Amount" className="order-5">
+        <ValueCell amount={amt} strong />
+      </Cell>
+      <Cell label="Paid" className={cn("order-6", settle === "full" && "hidden sm:flex")}>
+        {settle === "full" ? (
+          <ValueCell amount={paid} muted />
+        ) : (
+          <NumInput
+            label="Paid"
+            value={draft.paid_amount}
+            onChange={(v) => onChange({ paid_amount: v })}
+          />
+        )}
+      </Cell>
     </div>
   );
 }
