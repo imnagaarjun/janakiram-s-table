@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/select";
 import { inr } from "@/lib/gst";
 import { vendorKind, type VendorKind } from "./vendorKind";
+import { mergeUnits } from "@/lib/units";
 
 interface ExpenseCategory {
   id: string;
@@ -82,8 +83,6 @@ interface VendorProduct {
   display_order: number;
   is_active: boolean;
 }
-
-const UNITS = ["kg", "litre", "piece", "packet", "dozen", "gram", "ml", "bundle"];
 
 export function VendorsPanel() {
   const { profile } = useAuth();
@@ -343,6 +342,7 @@ export function VendorsPanel() {
                     restaurantId={profile.restaurant_id}
                     vendor={v}
                     products={vprods}
+                    allUnits={mergeUnits(products.map((p) => p.unit))}
                     cats={cats}
                     kind={kind}
                     onReload={load}
@@ -550,6 +550,7 @@ function ProductsEditor({
   restaurantId,
   vendor,
   products,
+  allUnits,
   cats,
   kind,
   onReload,
@@ -557,6 +558,7 @@ function ProductsEditor({
   restaurantId: string;
   vendor: Vendor;
   products: VendorProduct[];
+  allUnits: string[];
   cats: ExpenseCategory[];
   kind: VendorKind;
   onReload: () => void;
@@ -703,6 +705,7 @@ function ProductsEditor({
           restaurantId={restaurantId}
           vendor={vendor}
           existing={editing}
+          units={allUnits}
           cats={cats}
           nextOrder={products.length}
           onClose={() => {
@@ -742,6 +745,7 @@ function ProductEditor({
   restaurantId,
   vendor,
   existing,
+  units,
   cats,
   nextOrder,
   onClose,
@@ -750,6 +754,7 @@ function ProductEditor({
   restaurantId: string;
   vendor: Vendor;
   existing: VendorProduct | null;
+  units: string[];
   cats: ExpenseCategory[];
   nextOrder: number;
   onClose: () => void;
@@ -758,6 +763,24 @@ function ProductEditor({
   const [name, setName] = useState(existing?.name ?? "");
   const [nameTamil, setNameTamil] = useState(existing?.name_tamil ?? "");
   const [unit, setUnit] = useState(existing?.unit ?? "kg");
+  const [extraUnits, setExtraUnits] = useState<string[]>([]);
+  const [addingUnit, setAddingUnit] = useState(false);
+  const [newUnit, setNewUnit] = useState("");
+  const unitOptions = mergeUnits([...units, ...extraUnits, unit]);
+
+  function commitNewUnit() {
+    const u = newUnit.trim();
+    if (!u) return;
+    if (u.length > 20) {
+      toast.error("Unit name is too long (max 20 characters)");
+      return;
+    }
+    const existingMatch = unitOptions.find((x) => x.toLowerCase() === u.toLowerCase());
+    if (!existingMatch) setExtraUnits((e) => [...e, u]);
+    setUnit(existingMatch ?? u);
+    setNewUnit("");
+    setAddingUnit(false);
+  }
   const [priceMode, setPriceMode] = useState<"fixed" | "variable">(
     existing?.price_mode ?? "variable",
   );
@@ -839,18 +862,56 @@ function ProductEditor({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="block mb-1.5">Unit</Label>
-              <Select value={unit} onValueChange={setUnit}>
+              <Select
+                value={unit}
+                onValueChange={(v) => {
+                  if (v === "__new") setAddingUnit(true);
+                  else {
+                    setAddingUnit(false);
+                    setUnit(v);
+                  }
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {UNITS.map((u) => (
+                  {unitOptions.map((u) => (
                     <SelectItem key={u} value={u}>
                       {u}
                     </SelectItem>
                   ))}
+                  <SelectItem value="__new" className="text-primary font-medium">
+                    + Add new unit…
+                  </SelectItem>
                 </SelectContent>
               </Select>
+              {addingUnit && (
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    autoFocus
+                    value={newUnit}
+                    maxLength={20}
+                    onChange={(e) => setNewUnit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitNewUnit();
+                      }
+                    }}
+                    placeholder="e.g. Bag, Crate"
+                    aria-label="New unit name"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={commitNewUnit}
+                    disabled={!newUnit.trim()}
+                  >
+                    Add
+                  </Button>
+                </div>
+              )}
             </div>
             <div>
               <Label className="block mb-1.5">Category</Label>

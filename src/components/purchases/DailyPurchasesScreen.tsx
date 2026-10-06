@@ -1152,7 +1152,7 @@ function NumInput({
         <Lock className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
       )}
       {suffix && !locked && (
-        <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+        <span className="pointer-events-none absolute right-1.5 top-1/2 max-w-[2.75rem] truncate -translate-y-1/2 text-[10px] text-muted-foreground">
           {suffix}
         </span>
       )}
