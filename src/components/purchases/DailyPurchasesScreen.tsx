@@ -85,7 +85,7 @@ interface DraftLine {
 }
 
 // Column layout shared by the header and every entry row (desktop); rows stack on phones.
-const GRID = "sm:grid-cols-[minmax(0,1fr)_72px_84px_88px_84px]";
+const GRID = "sm:grid-cols-[minmax(0,1fr)_92px_84px_88px_84px]";
 
 function todayIST(): string {
   const d = new Date();
@@ -1141,18 +1141,21 @@ function NumInput({
         onFocus={(e) => e.target.select()}
         onWheel={(e) => e.currentTarget.blur()}
         placeholder={placeholder}
+        style={
+          suffix && !locked ? { paddingRight: Math.min(suffix.length * 6 + 14, 54) } : undefined
+        }
         className={cn(
           "h-11 sm:h-9 px-2 text-right text-base sm:text-sm tabular-nums placeholder:text-muted-foreground/40",
           "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           readOnly && "bg-muted/60 text-muted-foreground",
-          (locked || suffix) && "pr-7",
+          locked && "pr-7",
         )}
       />
       {locked && (
         <Lock className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
       )}
       {suffix && !locked && (
-        <span className="pointer-events-none absolute right-1.5 top-1/2 max-w-[2.75rem] truncate -translate-y-1/2 text-[10px] text-muted-foreground">
+        <span className="pointer-events-none absolute right-1.5 top-1/2 max-w-[3rem] truncate -translate-y-1/2 text-[10px] text-muted-foreground">
           {suffix}
         </span>
       )}
