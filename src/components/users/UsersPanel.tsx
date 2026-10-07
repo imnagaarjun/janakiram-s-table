@@ -579,7 +579,7 @@ export function UsersPanel() {
                             const canView = effectivePerms.has(viewKey);
                             const canEdit = area.hasEdit && effectivePerms.has(editKey);
                             return (
-                              <div key={area.key} className="flex items-center gap-3 py-1 border-b border-border/50 last:border-0">
+                              <div key={area.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1 border-b border-border/50 last:border-0">
                                 <span className="text-xs flex-1 text-foreground">{area.label}</span>
                                 <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer select-none">
                                   <Switch
@@ -589,6 +589,7 @@ export function UsersPanel() {
                                       setPermsOverride((prev) => {
                                         const next = { ...prev, [viewKey]: v };
                                         if (!v && area.hasEdit) next[editKey] = false;
+                                        if (!v) area.extras?.forEach((x) => { next[`${area.key}:${x.key}`] = false; });
                                         return next;
                                       });
                                     }}
@@ -610,6 +611,23 @@ export function UsersPanel() {
                                     Edit
                                   </label>
                                 )}
+                                {area.extras?.map((x) => {
+                                  const k = `${area.key}:${x.key}`;
+                                  return (
+                                    <label key={k} className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer select-none">
+                                      <Switch
+                                        checked={effectivePerms.has(k)}
+                                        disabled={!canView}
+                                        onCheckedChange={(v) => {
+                                          setPermsReset(false);
+                                          setPermsOverride((prev) => ({ ...prev, [k]: v }));
+                                        }}
+                                        className="scale-75"
+                                      />
+                                      {x.label}
+                                    </label>
+                                  );
+                                })}
                               </div>
                             );
                           })}

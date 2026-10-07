@@ -15,7 +15,16 @@ export interface PurchasesPdfInput {
   groups: { vendor: string; rows: PurchasesPdfRow[] }[];
   totals: { gross: number; cash: number; online: number; due: number };
   outstanding: { vendor: string; due: number }[];
-  approval: { name: string; at: string; revisedBy?: string; revisedAt?: string };
+  approval: {
+    checkedBy: string;
+    checkedAt: string;
+    approvedBy: string;
+    approvedAt: string;
+    correctedBy?: string;
+    correctedAt?: string;
+    revisedBy?: string;
+    revisedAt?: string;
+  };
 }
 
 // Standard PDF fonts have no rupee glyph, so amounts are written as "Rs.".
@@ -168,18 +177,31 @@ async function buildPurchasesPdf(input: PurchasesPdfInput) {
   }
   doc.setDrawColor(180);
   doc.line(margin, y - 12, pageW - margin, y - 12);
+  const ap = input.approval;
+  const colB = margin + (pageW - margin * 2) / 2;
   doc.setTextColor(0);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text(`Approved by: ${input.approval.name}`, margin, y);
+  doc.text(`Checked by: ${ap.checkedBy}`, margin, y);
+  doc.text(`Approved by: ${ap.approvedBy}`, colB, y);
   doc.setFont("helvetica", "normal");
-  doc.text(`Approved on: ${input.approval.at}`, margin, y + 15);
-  if (input.approval.revisedBy) {
-    doc.setTextColor(180, 83, 9);
+  doc.text(`Checked on: ${ap.checkedAt}`, margin, y + 15);
+  doc.text(`Approved on: ${ap.approvedAt}`, colB, y + 15);
+  doc.setTextColor(180, 83, 9);
+  let noteY = y + 32;
+  if (ap.correctedBy) {
     doc.text(
-      `Revised after approval by ${input.approval.revisedBy}${input.approval.revisedAt ? `, ${input.approval.revisedAt}` : ""}`,
+      `Corrected after checking by ${ap.correctedBy}${ap.correctedAt ? `, ${ap.correctedAt}` : ""}`,
       margin,
-      y + 30,
+      noteY,
+    );
+    noteY += 14;
+  }
+  if (ap.revisedBy) {
+    doc.text(
+      `Revised after approval by ${ap.revisedBy}${ap.revisedAt ? `, ${ap.revisedAt}` : ""}`,
+      margin,
+      noteY,
     );
   }
 

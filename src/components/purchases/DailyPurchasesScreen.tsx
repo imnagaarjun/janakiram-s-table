@@ -108,11 +108,31 @@ interface DraftLine {
 }
 
 interface Approval {
-  approved_by_name: string;
-  approved_at: string;
+  checked_by_name: string | null;
+  checked_at: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  corrected_by_name: string | null;
+  corrected_at: string | null;
   revised_by_name: string | null;
   revised_at: string | null;
 }
+
+type Stage = "open" | "checked" | "approved";
+type SignoffAction = "check" | "approve" | "sendback" | "reopen";
+
+const SIGNOFF_RPC: Record<SignoffAction, string> = {
+  check: "check_purchase_day",
+  approve: "approve_purchase_day",
+  sendback: "send_back_purchase_day",
+  reopen: "reopen_purchase_day",
+};
+const SIGNOFF_DONE: Record<SignoffAction, string> = {
+  check: "Day checked",
+  approve: "Day approved",
+  sendback: "Sent back for correction",
+  reopen: "Day reopened",
+};
 
 const fmtTime = (ts: string) =>
   new Date(ts).toLocaleString("en-IN", {
@@ -127,10 +147,14 @@ const fmtTime = (ts: string) =>
 
 function friendlyApproval(message: string): string {
   if (message.includes("DAY_APPROVED"))
-    return "This day is approved and locked. Ask an admin or manager to make changes.";
-  if (message.includes("NOT_ALLOWED")) return "Only an admin or manager can do this.";
+    return "This day is approved. Only the admin can change it.";
+  if (message.includes("DAY_CHECKED"))
+    return "This day has been checked. Only people who can approve it (or the admin) can correct it.";
+  if (message.includes("NOT_ALLOWED")) return "You don't have permission to do this.";
+  if (message.includes("ALREADY_CHECKED")) return "This day is already checked.";
   if (message.includes("ALREADY_APPROVED")) return "This day is already approved.";
-  if (message.includes("FUTURE_DATE")) return "You can't approve a day that hasn't happened yet.";
+  if (message.includes("NOT_CHECKED")) return "Check the day before approving it.";
+  if (message.includes("FUTURE_DATE")) return "You can't sign off a day that hasn't happened yet.";
   if (message.includes("NOT_APPROVED")) return "This day isn't approved.";
   return message;
 }
@@ -226,8 +250,10 @@ function buildDraft(ven: Vendor, vProds: VendorProduct[], vLines: PurchaseLine[]
 }
 
 export function DailyPurchasesScreen() {
-  const { profile, hasRole } = useAuth();
-  const canOverride = hasRole("admin", "manager");
+  const { profile, hasRole, can } = useAuth();
+  const isAdmin = hasRole("admin");
+  const canCheck = can("purchases:check");
+  const canApprove = can("purchases:approve");
   const [businessDate, setBusinessDate] = useState<string>(todayIST());
   const [tab, setTab] = useState("entry");
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -246,9 +272,13 @@ export function DailyPurchasesScreen() {
   const [filter, setFilter] = useState<Filter>("all");
   const [exporting, setExporting] = useState(false);
   const [approval, setApproval] = useState<Approval | null>(null);
-  const [confirmApprove, setConfirmApprove] = useState(false);
-  const [confirmReopen, setConfirmReopen] = useState(false);
+  const [confirm, setConfirm] = useState<SignoffAction | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const stage: Stage = !approval?.checked_by_name
+    ? "open"
+    : approval.approved_by_name
+      ? "approved"
+      : "checked";
   const [showAddVendor, setShowAddVendor] = useState(false);
   const [focusUid, setFocusUid] = useState<string | null>(null);
   const [lastPrice, setLastPrice] = useState<Record<string, number>>({});
@@ -626,7 +656,8 @@ export function DailyPurchasesScreen() {
     });
     if (error) {
       toast.error(`${v.name}: ${friendlyApproval(error.message)}`);
-      if (error.message.includes("DAY_APPROVED")) refreshApproval();
+      if (error.message.includes("DAY_APPROVED") || error.message.includes("DAY_CHECKED"))
+        refreshApproval();
       return false;
     }
     return true;
@@ -715,35 +746,24 @@ export function DailyPurchasesScreen() {
     setApproval(r.error ? null : ((r.data ?? null) as Approval | null));
   }
 
-  async function doApprove() {
+  async function runSignoff(action: SignoffAction) {
     setApprovalBusy(true);
-    const { error } = await db.rpc("approve_purchase_day", { _business_date: businessDate });
+    const { error } = await db.rpc(SIGNOFF_RPC[action], { _business_date: businessDate });
     setApprovalBusy(false);
     if (error) {
       toast.error(friendlyApproval(error.message));
+      await refreshApproval();
+      setConfirm(null);
       return;
     }
-    setConfirmApprove(false);
-    toast.success("Day approved");
-    await refreshApproval();
-  }
-
-  async function doReopen() {
-    setApprovalBusy(true);
-    const { error } = await db.rpc("reopen_purchase_day", { _business_date: businessDate });
-    setApprovalBusy(false);
-    if (error) {
-      toast.error(friendlyApproval(error.message));
-      return;
-    }
-    setConfirmReopen(false);
-    toast.success("Day reopened");
+    setConfirm(null);
+    toast.success(SIGNOFF_DONE[action]);
     await refreshApproval();
   }
 
   async function exportPdf(action: "download" | "print") {
-    if (!approval) {
-      toast.error("Approve the day first. PDF and Print are available after approval.");
+    if (stage !== "approved" || !approval) {
+      toast.error("PDF and Print are available once the day is approved.");
       return;
     }
     setExporting(true);
@@ -783,8 +803,12 @@ export function DailyPurchasesScreen() {
           .map((v) => ({ vendor: v.name, due: dues[v.id] ?? 0 }))
           .sort((a, b) => b.due - a.due),
         approval: {
-          name: approval.approved_by_name,
-          at: fmtTime(approval.approved_at),
+          checkedBy: approval.checked_by_name ?? "",
+          checkedAt: approval.checked_at ? fmtTime(approval.checked_at) : "",
+          approvedBy: approval.approved_by_name ?? "",
+          approvedAt: approval.approved_at ? fmtTime(approval.approved_at) : "",
+          correctedBy: approval.corrected_by_name ?? undefined,
+          correctedAt: approval.corrected_at ? fmtTime(approval.corrected_at) : undefined,
           revisedBy: approval.revised_by_name ?? undefined,
           revisedAt: approval.revised_at ? fmtTime(approval.revised_at) : undefined,
         },
@@ -815,7 +839,7 @@ export function DailyPurchasesScreen() {
   if (!profile) return null;
 
   const isToday = businessDate === todayIST();
-  const locked = !!approval && !canOverride;
+  const locked = stage === "checked" ? !canApprove : stage === "approved" ? !isAdmin : false;
 
   return (
     <div>
@@ -862,13 +886,17 @@ export function DailyPurchasesScreen() {
                 Today
               </Button>
             )}
-            <span title={approval ? undefined : "Approve the day to enable PDF and Print"}>
+            <span
+              title={
+                stage === "approved" ? undefined : "PDF and Print unlock once the day is approved"
+              }
+            >
               <Button
                 variant="outline"
                 size="sm"
                 className="h-10 sm:h-9"
                 onClick={() => exportPdf("download")}
-                disabled={!approval || exporting || loading}
+                disabled={stage !== "approved" || exporting || loading}
                 aria-label="Download PDF"
               >
                 {exporting ? (
@@ -879,13 +907,17 @@ export function DailyPurchasesScreen() {
                 <span className="hidden sm:inline">PDF</span>
               </Button>
             </span>
-            <span title={approval ? undefined : "Approve the day to enable PDF and Print"}>
+            <span
+              title={
+                stage === "approved" ? undefined : "PDF and Print unlock once the day is approved"
+              }
+            >
               <Button
                 variant="outline"
                 size="sm"
                 className="h-10 sm:h-9"
                 onClick={() => exportPdf("print")}
-                disabled={!approval || exporting || loading}
+                disabled={stage !== "approved" || exporting || loading}
                 aria-label="Print"
               >
                 <Printer className="h-4 w-4 sm:mr-1.5" />
@@ -896,62 +928,126 @@ export function DailyPurchasesScreen() {
         </div>
 
         <TabsContent value="entry" className="mt-0">
-          {!loading &&
-            (approval ? (
-              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
-                <div className="min-w-0 flex-1 text-sm">
-                  <div className="font-semibold text-emerald-900">
-                    Approved by {approval.approved_by_name}
-                  </div>
-                  <div className="text-xs text-emerald-800/80">
-                    {fmtTime(approval.approved_at)}
-                    {approval.revised_by_name && approval.revised_at && (
-                      <span className="text-amber-700">
-                        {" "}
-                        · Revised after approval by {approval.revised_by_name},{" "}
-                        {fmtTime(approval.revised_at)}
-                      </span>
+          {!loading && (
+            <div
+              className={cn(
+                "mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border px-3 py-2.5",
+                stage === "approved"
+                  ? "border-emerald-200 bg-emerald-50"
+                  : stage === "checked"
+                    ? "border-sky-200 bg-sky-50"
+                    : "border-border bg-surface",
+              )}
+            >
+              {stage !== "open" && (
+                <ShieldCheck
+                  className={cn(
+                    "h-5 w-5 shrink-0",
+                    stage === "approved" ? "text-emerald-600" : "text-sky-600",
+                  )}
+                />
+              )}
+              <div className="min-w-0 flex-1 text-sm">
+                {stage === "open" && (
+                  <>
+                    <div className="font-medium">Not checked yet</div>
+                    <div className="text-xs text-muted-foreground">
+                      Checked, then approved. PDF and Print unlock once the day is approved.
+                    </div>
+                  </>
+                )}
+                {approval && stage !== "open" && (
+                  <div className="space-y-0.5">
+                    <div>
+                      <span className="font-semibold">Checked by {approval.checked_by_name}</span>
+                      {approval.checked_at && (
+                        <span className="text-xs text-muted-foreground">
+                          {" "}
+                          · {fmtTime(approval.checked_at)}
+                        </span>
+                      )}
+                      {approval.corrected_by_name && approval.corrected_at && (
+                        <span className="text-xs text-amber-700">
+                          {" "}
+                          · Corrected by {approval.corrected_by_name},{" "}
+                          {fmtTime(approval.corrected_at)}
+                        </span>
+                      )}
+                    </div>
+                    {stage === "approved" && approval.approved_at ? (
+                      <div>
+                        <span className="font-semibold text-emerald-900">
+                          Approved by {approval.approved_by_name}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {" "}
+                          · {fmtTime(approval.approved_at)}
+                        </span>
+                        {approval.revised_by_name && approval.revised_at && (
+                          <span className="text-xs text-amber-700">
+                            {" "}
+                            · Revised after approval by {approval.revised_by_name},{" "}
+                            {fmtTime(approval.revised_at)}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">Waiting for approval</div>
                     )}
                   </div>
+                )}
+                {stage !== "open" && (
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    {locked
-                      ? "This day is locked. Only an admin or manager can make changes."
-                      : "You can still edit this day as an authorised user. Changes are recorded as a revision."}
+                    {stage === "checked"
+                      ? locked
+                        ? "Checked. Only people who can approve (and the admin) can correct this day."
+                        : "Checked. You can correct this day; corrections are recorded."
+                      : locked
+                        ? "Approved and locked. Only the admin can change it."
+                        : "Approved. As admin you can still change it; changes are recorded as a revision."}
                   </div>
-                </div>
-                {canOverride && (
-                  <Button variant="outline" size="sm" onClick={() => setConfirmReopen(true)}>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {stage === "open" &&
+                  (canCheck ? (
+                    <>
+                      {dirty.size > 0 && (
+                        <span className="text-xs text-amber-700">Save changes first</span>
+                      )}
+                      <Button
+                        size="sm"
+                        onClick={() => setConfirm("check")}
+                        disabled={dirty.size > 0}
+                      >
+                        <Check className="h-4 w-4 mr-1.5" /> Mark as checked
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Waiting for check</span>
+                  ))}
+                {stage === "checked" && canApprove && (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => setConfirm("sendback")}>
+                      Send back
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => setConfirm("approve")}
+                      disabled={dirty.size > 0}
+                    >
+                      <ShieldCheck className="h-4 w-4 mr-1.5" /> Approve
+                    </Button>
+                  </>
+                )}
+                {stage === "approved" && isAdmin && (
+                  <Button variant="outline" size="sm" onClick={() => setConfirm("reopen")}>
                     Reopen
                   </Button>
                 )}
               </div>
-            ) : (
-              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-border bg-surface px-3 py-2.5">
-                <div className="min-w-0 flex-1 text-sm">
-                  <div className="font-medium">Not approved yet</div>
-                  <div className="text-xs text-muted-foreground">
-                    PDF and Print unlock once an admin or manager approves the day.
-                  </div>
-                </div>
-                {canOverride ? (
-                  <div className="flex items-center gap-2">
-                    {dirty.size > 0 && (
-                      <span className="text-xs text-amber-700">Save changes first</span>
-                    )}
-                    <Button
-                      size="sm"
-                      onClick={() => setConfirmApprove(true)}
-                      disabled={dirty.size > 0}
-                    >
-                      <ShieldCheck className="h-4 w-4 mr-1.5" /> Approve day
-                    </Button>
-                  </div>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Waiting for approval</span>
-                )}
-              </div>
-            ))}
+            </div>
+          )}
 
           <div className="grid grid-cols-4 gap-px bg-border rounded-2xl border border-border overflow-hidden shadow-sm mb-3">
             <Stat label="Purchases" value={inr(totals.gross)} />
@@ -1376,39 +1472,66 @@ export function DailyPurchasesScreen() {
       </Tabs>
 
       <AlertDialog
-        open={confirmApprove}
-        onOpenChange={(o) => !approvalBusy && setConfirmApprove(o)}
+        open={confirm !== null}
+        onOpenChange={(o) => !approvalBusy && !o && setConfirm(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Approve purchases for{" "}
-              {new Date(`${businessDate}T00:00:00`).toLocaleDateString("en-IN", {
-                weekday: "short",
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
-              ?
+              {confirm === "check" && "Mark this day as checked?"}
+              {confirm === "approve" && "Approve this day?"}
+              {confirm === "sendback" && "Send back for correction?"}
+              {confirm === "reopen" && "Reopen this approved day?"}
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm">
-                <p>
-                  Total <strong className="text-foreground">{inr(totals.gross)}</strong> · Cash{" "}
-                  <strong className="text-foreground">{inr(totals.cash)}</strong> · Online{" "}
-                  <strong className="text-foreground">{inr(totals.online)}</strong> · Due{" "}
-                  <strong className="text-foreground">{inr(totals.due)}</strong>
+                <p className="font-medium text-foreground">
+                  {new Date(`${businessDate}T00:00:00`).toLocaleDateString("en-IN", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
                 </p>
-                {pendingCount > 0 && (
-                  <p className="text-amber-700">
-                    {pendingCount} {pendingCount === 1 ? "vendor has" : "vendors have"} no entry for
-                    this day.
+                {(confirm === "check" || confirm === "approve") && (
+                  <>
+                    <p>
+                      Total <strong className="text-foreground">{inr(totals.gross)}</strong> · Cash{" "}
+                      <strong className="text-foreground">{inr(totals.cash)}</strong> · Online{" "}
+                      <strong className="text-foreground">{inr(totals.online)}</strong> · Due{" "}
+                      <strong className="text-foreground">{inr(totals.due)}</strong>
+                    </p>
+                    {pendingCount > 0 && (
+                      <p className="text-amber-700">
+                        {pendingCount} {pendingCount === 1 ? "vendor has" : "vendors have"} no entry
+                        for this day.
+                      </p>
+                    )}
+                  </>
+                )}
+                {confirm === "check" && (
+                  <p>
+                    After checking, only people who can approve (and the admin) can correct this
+                    sheet. Your name and the time are recorded.
                   </p>
                 )}
-                <p>
-                  Once approved, the sheet is locked. Only an admin or manager can change it, and
-                  your name and the time are recorded on the approval.
-                </p>
+                {confirm === "approve" && (
+                  <p>
+                    After approval the sheet is locked: only the admin can change it. Your name and
+                    the time are recorded, and PDF and Print become available.
+                  </p>
+                )}
+                {confirm === "sendback" && (
+                  <p>
+                    The check is removed and staff can edit the sheet again until it is rechecked.
+                  </p>
+                )}
+                {confirm === "reopen" && (
+                  <p>
+                    The approval is removed and the sheet goes back to &quot;checked&quot;, so
+                    approvers and the admin can correct it. PDF and Print lock again.
+                  </p>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1418,36 +1541,14 @@ export function DailyPurchasesScreen() {
               disabled={approvalBusy}
               onClick={(e) => {
                 e.preventDefault();
-                doApprove();
+                if (confirm) runSignoff(confirm);
               }}
             >
               {approvalBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
-              Approve
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={confirmReopen} onOpenChange={(o) => !approvalBusy && setConfirmReopen(o)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reopen this day?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The approval is removed, PDF and Print are locked again, and staff can edit the sheet
-              until it is approved again. The reopening is recorded.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={approvalBusy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={approvalBusy}
-              onClick={(e) => {
-                e.preventDefault();
-                doReopen();
-              }}
-            >
-              {approvalBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
-              Reopen
+              {confirm === "check" && "Mark as checked"}
+              {confirm === "approve" && "Approve"}
+              {confirm === "sendback" && "Send back"}
+              {confirm === "reopen" && "Reopen"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
