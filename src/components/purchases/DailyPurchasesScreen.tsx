@@ -762,8 +762,8 @@ export function DailyPurchasesScreen() {
   }
 
   async function exportPdf(action: "download" | "print") {
-    if (stage !== "approved" || !approval) {
-      toast.error("PDF and Print are available once the day is approved.");
+    if (stage === "open" || !approval) {
+      toast.error("PDF and Print are available once the day is checked.");
       return;
     }
     setExporting(true);
@@ -805,8 +805,8 @@ export function DailyPurchasesScreen() {
         approval: {
           checkedBy: approval.checked_by_name ?? "",
           checkedAt: approval.checked_at ? fmtTime(approval.checked_at) : "",
-          approvedBy: approval.approved_by_name ?? "",
-          approvedAt: approval.approved_at ? fmtTime(approval.approved_at) : "",
+          approvedBy: approval.approved_by_name ?? undefined,
+          approvedAt: approval.approved_at ? fmtTime(approval.approved_at) : undefined,
           correctedBy: approval.corrected_by_name ?? undefined,
           correctedAt: approval.corrected_at ? fmtTime(approval.corrected_at) : undefined,
           revisedBy: approval.revised_by_name ?? undefined,
@@ -887,16 +887,14 @@ export function DailyPurchasesScreen() {
               </Button>
             )}
             <span
-              title={
-                stage === "approved" ? undefined : "PDF and Print unlock once the day is approved"
-              }
+              title={stage !== "open" ? undefined : "PDF and Print unlock once the day is checked"}
             >
               <Button
                 variant="outline"
                 size="sm"
                 className="h-10 sm:h-9"
                 onClick={() => exportPdf("download")}
-                disabled={stage !== "approved" || exporting || loading}
+                disabled={stage === "open" || exporting || loading}
                 aria-label="Download PDF"
               >
                 {exporting ? (
@@ -908,16 +906,14 @@ export function DailyPurchasesScreen() {
               </Button>
             </span>
             <span
-              title={
-                stage === "approved" ? undefined : "PDF and Print unlock once the day is approved"
-              }
+              title={stage !== "open" ? undefined : "PDF and Print unlock once the day is checked"}
             >
               <Button
                 variant="outline"
                 size="sm"
                 className="h-10 sm:h-9"
                 onClick={() => exportPdf("print")}
-                disabled={stage !== "approved" || exporting || loading}
+                disabled={stage === "open" || exporting || loading}
                 aria-label="Print"
               >
                 <Printer className="h-4 w-4 sm:mr-1.5" />
@@ -952,7 +948,7 @@ export function DailyPurchasesScreen() {
                   <>
                     <div className="font-medium">Not checked yet</div>
                     <div className="text-xs text-muted-foreground">
-                      Checked, then approved. PDF and Print unlock once the day is approved.
+                      Checked, then approved. PDF and Print unlock once the day is checked.
                     </div>
                   </>
                 )}
@@ -1512,24 +1508,25 @@ export function DailyPurchasesScreen() {
                 {confirm === "check" && (
                   <p>
                     After checking, only people who can approve (and the admin) can correct this
-                    sheet. Your name and the time are recorded.
+                    sheet, and PDF and Print become available. Your name and the time are recorded.
                   </p>
                 )}
                 {confirm === "approve" && (
                   <p>
                     After approval the sheet is locked: only the admin can change it. Your name and
-                    the time are recorded, and PDF and Print become available.
+                    the time are recorded.
                   </p>
                 )}
                 {confirm === "sendback" && (
                   <p>
-                    The check is removed and staff can edit the sheet again until it is rechecked.
+                    The check is removed and staff can edit the sheet again. PDF and Print lock
+                    until it is rechecked.
                   </p>
                 )}
                 {confirm === "reopen" && (
                   <p>
                     The approval is removed and the sheet goes back to &quot;checked&quot;, so
-                    approvers and the admin can correct it. PDF and Print lock again.
+                    approvers and the admin can correct it.
                   </p>
                 )}
               </div>

@@ -18,8 +18,8 @@ export interface PurchasesPdfInput {
   approval: {
     checkedBy: string;
     checkedAt: string;
-    approvedBy: string;
-    approvedAt: string;
+    approvedBy?: string;
+    approvedAt?: string;
     correctedBy?: string;
     correctedAt?: string;
     revisedBy?: string;
@@ -54,8 +54,13 @@ async function buildPurchasesPdf(input: PurchasesPdfInput) {
   doc.text("Daily Purchases", margin, 62);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.setTextColor(21, 128, 61);
-  doc.text("APPROVED", pageW - margin, 44, { align: "right" });
+  if (input.approval.approvedBy) {
+    doc.setTextColor(21, 128, 61);
+    doc.text("APPROVED", pageW - margin, 44, { align: "right" });
+  } else {
+    doc.setTextColor(2, 132, 199);
+    doc.text("CHECKED - AWAITING APPROVAL", pageW - margin, 44, { align: "right" });
+  }
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(90);
@@ -183,10 +188,10 @@ async function buildPurchasesPdf(input: PurchasesPdfInput) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.text(`Checked by: ${ap.checkedBy}`, margin, y);
-  doc.text(`Approved by: ${ap.approvedBy}`, colB, y);
+  doc.text(ap.approvedBy ? `Approved by: ${ap.approvedBy}` : "Approval: pending", colB, y);
   doc.setFont("helvetica", "normal");
   doc.text(`Checked on: ${ap.checkedAt}`, margin, y + 15);
-  doc.text(`Approved on: ${ap.approvedAt}`, colB, y + 15);
+  if (ap.approvedBy) doc.text(`Approved on: ${ap.approvedAt}`, colB, y + 15);
   doc.setTextColor(180, 83, 9);
   let noteY = y + 32;
   if (ap.correctedBy) {
