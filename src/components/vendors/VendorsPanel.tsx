@@ -12,6 +12,8 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
   CornerDownRight,
+  GripVertical,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -85,6 +87,73 @@ interface VendorProduct {
   is_active: boolean;
 }
 
+// One tidy control: up/down arrows (work everywhere, incl. touch) and a drag handle (desktop).
+function ReorderControls({
+  canUp,
+  canDown,
+  onUp,
+  onDown,
+  onDragStart,
+  onDragEnd,
+}: {
+  canUp: boolean;
+  canDown: boolean;
+  onUp: () => void;
+  onDown: () => void;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center shrink-0 -ml-1 text-muted-foreground">
+      <button
+        type="button"
+        onClick={onUp}
+        disabled={!canUp}
+        aria-label="Move up"
+        className="h-5 w-6 grid place-items-center rounded hover:bg-accent disabled:opacity-25 disabled:hover:bg-transparent"
+      >
+        <ChevronUp className="h-4 w-4" />
+      </button>
+      <span
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        title="Drag to reorder"
+        className="hidden md:grid h-5 w-6 place-items-center cursor-grab active:cursor-grabbing"
+      >
+        <GripVertical className="h-4 w-4" />
+      </span>
+      <button
+        type="button"
+        onClick={onDown}
+        disabled={!canDown}
+        aria-label="Move down"
+        className="h-5 w-6 grid place-items-center rounded hover:bg-accent disabled:opacity-25 disabled:hover:bg-transparent"
+      >
+        <ChevronDown className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+// Moves `fromId` next to `toId` (after it when dragging down, before it when dragging up).
+function moved<T extends { id: string }>(list: T[], fromId: string, toId: string): T[] {
+  const fromIdx = list.findIndex((x) => x.id === fromId);
+  const toIdx0 = list.findIndex((x) => x.id === toId);
+  if (fromIdx < 0 || toIdx0 < 0 || fromIdx === toIdx0) return list;
+  const next = list.filter((x) => x.id !== fromId);
+  const toIdx = next.findIndex((x) => x.id === toId);
+  next.splice(fromIdx < toIdx0 ? toIdx + 1 : toIdx, 0, list[fromIdx]);
+  return next;
+}
+
+function swapped<T>(list: T[], i: number, j: number): T[] {
+  if (j < 0 || j >= list.length) return list;
+  const next = [...list];
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+}
+
 export function VendorsPanel() {
   const { profile } = useAuth();
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -96,6 +165,8 @@ export function VendorsPanel() {
   const [creating, setCreating] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Vendor | null>(null);
   const [query, setQuery] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -124,11 +195,41 @@ export function VendorsPanel() {
     });
   }
 
+  // The reorderable list: every regular vendor. One-time vendors always stay last.
+  const regular = vendors.filter((v) => !v.is_adhoc);
+  const nextVendorOrder = Math.max(-1, ...regular.map((v) => v.display_order)) + 1;
+
+  async function persistVendorOrder(next: Vendor[]) {
+    const order = new Map(next.map((v, i) => [v.id, i]));
+    setVendors((prev) =>
+      prev
+        .map((v) => (order.has(v.id) ? { ...v, display_order: order.get(v.id)! } : v))
+        .sort((a, b) => a.display_order - b.display_order || a.name.localeCompare(b.name)),
+    );
+    const changed = next.filter((v, i) => v.display_order !== i);
+    const results = await Promise.all(
+      changed.map((v) =>
+        db
+          .from("vendors")
+          .update({ display_order: order.get(v.id)! })
+          .eq("id", v.id),
+      ),
+    );
+    const failed = results.find((r) => r.error);
+    if (failed) {
+      toast.error(failed.error.message);
+      load();
+    }
+  }
+
   async function toggleActive(v: Vendor, val: boolean) {
-    // Activating a one-time vendor promotes it into the regular vendor list.
+    // Activating a one-time vendor promotes it into the regular vendor list (at the end).
     const { error } = await db
       .from("vendors")
-      .update({ is_active: val, ...(val && v.is_adhoc ? { is_adhoc: false } : {}) })
+      .update({
+        is_active: val,
+        ...(val && v.is_adhoc ? { is_adhoc: false, display_order: nextVendorOrder } : {}),
+      })
       .eq("id", v.id);
     if (error) toast.error(error.message);
     else load();
@@ -169,12 +270,7 @@ export function VendorsPanel() {
     ? vendors.filter(
         (v) =>
           v.name.toLowerCase().includes(q) ||
-          (v.name_tamil ?? "").toLowerCase().includes(q) ||
-          products.some(
-            (p) =>
-              p.vendor_id === v.id &&
-              (p.name.toLowerCase().includes(q) || (p.name_tamil ?? "").toLowerCase().includes(q)),
-          ),
+          products.some((p) => p.vendor_id === v.id && p.name.toLowerCase().includes(q)),
       )
     : vendors;
   const multiIds = vendors.filter((v) => v.is_multi_product).map((v) => v.id);
@@ -249,21 +345,52 @@ export function VendorsPanel() {
               expanded.has(v.id) ||
               (!!q &&
                 v.is_multi_product &&
-                vprods.some(
-                  (p) =>
-                    p.name.toLowerCase().includes(q) ||
-                    (p.name_tamil ?? "").toLowerCase().includes(q),
-                ));
+                vprods.some((p) => p.name.toLowerCase().includes(q)));
             return (
               <div
                 key={v.id}
+                onDragOver={(e) => {
+                  if (dragId && !v.is_adhoc) {
+                    e.preventDefault();
+                    setOverId(v.id);
+                  }
+                }}
+                onDrop={() => {
+                  if (dragId && !v.is_adhoc) persistVendorOrder(moved(regular, dragId, v.id));
+                  setDragId(null);
+                  setOverId(null);
+                }}
                 className={`relative rounded-2xl border bg-surface overflow-hidden shadow-sm transition-colors ${
                   open ? "border-primary/40 shadow-md" : "border-border"
-                } ${v.is_active ? "" : "opacity-60"}`}
+                } ${v.is_active ? "" : "opacity-60"} ${
+                  overId === v.id && dragId && dragId !== v.id ? "ring-2 ring-primary/60" : ""
+                } ${dragId === v.id ? "opacity-40" : ""}`}
               >
                 <span className={`absolute inset-y-0 left-0 w-1.5 ${kind.bar}`} aria-hidden />
 
-                <div className={`flex items-start gap-3 py-3 pl-5 pr-3 ${open ? kind.tint : ""}`}>
+                <div className={`flex items-start gap-3 py-3 pl-4 pr-3 ${open ? kind.tint : ""}`}>
+                  {!q && !v.is_adhoc && (
+                    <ReorderControls
+                      canUp={regular.findIndex((x) => x.id === v.id) > 0}
+                      canDown={regular.findIndex((x) => x.id === v.id) < regular.length - 1}
+                      onUp={() => {
+                        const i = regular.findIndex((x) => x.id === v.id);
+                        persistVendorOrder(swapped(regular, i, i - 1));
+                      }}
+                      onDown={() => {
+                        const i = regular.findIndex((x) => x.id === v.id);
+                        persistVendorOrder(swapped(regular, i, i + 1));
+                      }}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "move";
+                        setDragId(v.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setOverId(null);
+                      }}
+                    />
+                  )}
                   <button
                     type="button"
                     disabled={!v.is_multi_product}
@@ -282,9 +409,6 @@ export function VendorsPanel() {
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-base leading-tight">{v.name}</span>
-                        {v.name_tamil && (
-                          <span className="text-sm text-muted-foreground">{v.name_tamil}</span>
-                        )}
                         {v.is_adhoc && (
                           <Badge
                             variant="secondary"
@@ -360,6 +484,7 @@ export function VendorsPanel() {
                     cats={cats}
                     kind={kind}
                     onReload={load}
+                    reorderable={!q}
                   />
                 )}
               </div>
@@ -373,7 +498,7 @@ export function VendorsPanel() {
           restaurantId={profile.restaurant_id}
           existing={editing}
           cats={cats}
-          nextOrder={vendors.length}
+          nextOrder={nextVendorOrder}
           onClose={() => {
             setCreating(false);
             setEditing(null);
@@ -423,7 +548,6 @@ function VendorEditor({
   onSaved: () => void;
 }) {
   const [name, setName] = useState(existing?.name ?? "");
-  const [nameTamil, setNameTamil] = useState(existing?.name_tamil ?? "");
   const [phone, setPhone] = useState(existing?.phone ?? "");
   const [categoryId, setCategoryId] = useState<string | null>(
     existing?.default_category_id ?? null,
@@ -442,7 +566,6 @@ function VendorEditor({
     const payload = {
       restaurant_id: restaurantId,
       name: name.trim(),
-      name_tamil: nameTamil.trim() || null,
       phone: phone.trim() || null,
       default_category_id: categoryId,
       is_multi_product: isMulti,
@@ -474,15 +597,9 @@ function VendorEditor({
           <DialogTitle>{existing ? "Edit vendor" : "New vendor"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="block mb-1.5">Name (English)</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-            </div>
-            <div>
-              <Label className="block mb-1.5">Name (Tamil)</Label>
-              <Input value={nameTamil} onChange={(e) => setNameTamil(e.target.value)} />
-            </div>
+          <div>
+            <Label className="block mb-1.5">Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -568,6 +685,7 @@ function ProductsEditor({
   cats,
   kind,
   onReload,
+  reorderable,
 }: {
   restaurantId: string;
   vendor: Vendor;
@@ -576,7 +694,27 @@ function ProductsEditor({
   cats: ExpenseCategory[];
   kind: VendorKind;
   onReload: () => void;
+  reorderable: boolean;
 }) {
+  const [dragPid, setDragPid] = useState<string | null>(null);
+  const [overPid, setOverPid] = useState<string | null>(null);
+
+  async function persistProductOrder(next: VendorProduct[]) {
+    const changed = next.filter((p, i) => p.display_order !== i);
+    if (changed.length === 0) return;
+    const results = await Promise.all(
+      changed.map((p) =>
+        db
+          .from("vendor_products")
+          .update({ display_order: next.findIndex((x) => x.id === p.id) })
+          .eq("id", p.id),
+      ),
+    );
+    const failed = results.find((r) => r.error);
+    if (failed) toast.error(failed.error.message);
+    onReload();
+  }
+
   const [editing, setEditing] = useState<VendorProduct | null>(null);
   const [creating, setCreating] = useState(false);
   const [confirmDel, setConfirmDel] = useState<VendorProduct | null>(null);
@@ -643,25 +781,51 @@ function ProductsEditor({
         </div>
       ) : (
         <div className={`ml-3 border-l-2 ${kind.rail} pl-4 space-y-2`}>
-          {products.map((p) => {
+          {products.map((p, idx) => {
             const cat = cats.find((c) => c.id === p.category_id);
             return (
               <div
                 key={p.id}
+                onDragOver={(e) => {
+                  if (dragPid) {
+                    e.preventDefault();
+                    setOverPid(p.id);
+                  }
+                }}
+                onDrop={() => {
+                  if (dragPid) persistProductOrder(moved(products, dragPid, p.id));
+                  setDragPid(null);
+                  setOverPid(null);
+                }}
                 className={`relative flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 ${
                   p.is_active ? "" : "opacity-60"
+                } ${overPid === p.id && dragPid && dragPid !== p.id ? "ring-2 ring-primary/60" : ""} ${
+                  dragPid === p.id ? "opacity-40" : ""
                 }`}
               >
                 <span
                   className={`absolute -left-4 top-1/2 h-0 w-4 border-t-2 ${kind.rail}`}
                   aria-hidden
                 />
+                {reorderable && (
+                  <ReorderControls
+                    canUp={idx > 0}
+                    canDown={idx < products.length - 1}
+                    onUp={() => persistProductOrder(swapped(products, idx, idx - 1))}
+                    onDown={() => persistProductOrder(swapped(products, idx, idx + 1))}
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = "move";
+                      setDragPid(p.id);
+                    }}
+                    onDragEnd={() => {
+                      setDragPid(null);
+                      setOverPid(null);
+                    }}
+                  />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-x-2 gap-y-1 flex-wrap">
                     <span className="font-medium text-sm">{p.name}</span>
-                    {p.name_tamil && (
-                      <span className="text-xs text-muted-foreground">{p.name_tamil}</span>
-                    )}
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap mt-1">
                     <Badge variant="outline" className="text-[10px]">
@@ -721,7 +885,7 @@ function ProductsEditor({
           existing={editing}
           units={allUnits}
           cats={cats}
-          nextOrder={products.length}
+          nextOrder={Math.max(-1, ...products.map((p) => p.display_order)) + 1}
           onClose={() => {
             setCreating(false);
             setEditing(null);
@@ -775,7 +939,6 @@ function ProductEditor({
   onSaved: () => void;
 }) {
   const [name, setName] = useState(existing?.name ?? "");
-  const [nameTamil, setNameTamil] = useState(existing?.name_tamil ?? "");
   const [unit, setUnit] = useState(existing?.unit ?? "kg");
   const [extraUnits, setExtraUnits] = useState<string[]>([]);
   const [addingUnit, setAddingUnit] = useState(false);
@@ -825,7 +988,6 @@ function ProductEditor({
       restaurant_id: restaurantId,
       vendor_id: vendor.id,
       name: name.trim(),
-      name_tamil: nameTamil.trim() || null,
       unit,
       price_mode: priceMode,
       fixed_price: priceMode === "fixed" ? parseFloat(fixedPrice) : null,
@@ -862,15 +1024,9 @@ function ProductEditor({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="block mb-1.5">Name (English)</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-            </div>
-            <div>
-              <Label className="block mb-1.5">Name (Tamil)</Label>
-              <Input value={nameTamil} onChange={(e) => setNameTamil(e.target.value)} />
-            </div>
+          <div>
+            <Label className="block mb-1.5">Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
