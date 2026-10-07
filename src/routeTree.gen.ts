@@ -9,104 +9,44 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedCashConfigRouteImport } from './routes/_authenticated/cash-config'
+import { Route as AuthenticatedCashReconRouteImport } from './routes/_authenticated/cash-recon'
+import { Route as AuthenticatedKdsRouteImport } from './routes/_authenticated/kds'
+import { Route as AuthenticatedMenuRouteImport } from './routes/_authenticated/menu'
+import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
+import { Route as AuthenticatedPurchasesRouteImport } from './routes/_authenticated/purchases'
+import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedStockRouteImport } from './routes/_authenticated/stock'
+import { Route as AuthenticatedTablesRouteImport } from './routes/_authenticated/tables'
+import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
+import { Route as AuthenticatedVendorsRouteImport } from './routes/_authenticated/vendors'
+import { Route as AuthenticatedWaitersRouteImport } from './routes/_authenticated/waiters'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-password'
 import { Route as AuthResetPasswordRouteImport } from './routes/auth/reset-password'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedWaitersRouteImport } from './routes/_authenticated/waiters'
-import { Route as AuthenticatedVendorsRouteImport } from './routes/_authenticated/vendors'
-import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
-import { Route as AuthenticatedTablesRouteImport } from './routes/_authenticated/tables'
-import { Route as AuthenticatedStockRouteImport } from './routes/_authenticated/stock'
-import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
-import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
-import { Route as AuthenticatedPurchasesRouteImport } from './routes/_authenticated/purchases'
-import { Route as AuthenticatedMoreRouteImport } from './routes/_authenticated/more'
-import { Route as AuthenticatedMenuRouteImport } from './routes/_authenticated/menu'
-import { Route as AuthenticatedKdsRouteImport } from './routes/_authenticated/kds'
-import { Route as AuthenticatedCashReconRouteImport } from './routes/_authenticated/cash-recon'
-import { Route as AuthenticatedCashConfigRouteImport } from './routes/_authenticated/cash-config'
-import { Route as AuthenticatedOrderSessionIdRouteImport } from './routes/_authenticated/order.$sessionId'
 import { Route as AuthenticatedBillSessionIdRouteImport } from './routes/_authenticated/bill.$sessionId'
+import { Route as AuthenticatedOrderSessionIdRouteImport } from './routes/_authenticated/order.$sessionId'
 
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
-  id: '/auth/forgot-password',
-  path: '/auth/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
-  id: '/auth/reset-password',
-  path: '/auth/reset-password',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedWaitersRoute = AuthenticatedWaitersRouteImport.update({
-  id: '/waiters',
-  path: '/waiters',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedVendorsRoute = AuthenticatedVendorsRouteImport.update({
-  id: '/vendors',
-  path: '/vendors',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedTablesRoute = AuthenticatedTablesRouteImport.update({
-  id: '/tables',
-  path: '/tables',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedStockRoute = AuthenticatedStockRouteImport.update({
-  id: '/stock',
-  path: '/stock',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedPurchasesRoute = AuthenticatedPurchasesRouteImport.update({
-  id: '/purchases',
-  path: '/purchases',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedMoreRoute = AuthenticatedMoreRouteImport.update({
-  id: '/more',
-  path: '/more',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedMenuRoute = AuthenticatedMenuRouteImport.update({
-  id: '/menu',
-  path: '/menu',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedKdsRoute = AuthenticatedKdsRouteImport.update({
-  id: '/kds',
-  path: '/kds',
+const AuthenticatedCashConfigRoute = AuthenticatedCashConfigRouteImport.update({
+  id: '/cash-config',
+  path: '/cash-config',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedCashReconRoute = AuthenticatedCashReconRouteImport.update({
@@ -114,29 +54,87 @@ const AuthenticatedCashReconRoute = AuthenticatedCashReconRouteImport.update({
   path: '/cash-recon',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedCashConfigRoute = AuthenticatedCashConfigRouteImport.update({
-  id: '/cash-config',
-  path: '/cash-config',
+const AuthenticatedKdsRoute = AuthenticatedKdsRouteImport.update({
+  id: '/kds',
+  path: '/kds',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedOrderSessionIdRoute =
-  AuthenticatedOrderSessionIdRouteImport.update({
-    id: '/order/$sessionId',
-    path: '/order/$sessionId',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
+const AuthenticatedMenuRoute = AuthenticatedMenuRouteImport.update({
+  id: '/menu',
+  path: '/menu',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedMoreRoute = AuthenticatedMoreRouteImport.update({
+  id: '/more',
+  path: '/more',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPurchasesRoute = AuthenticatedPurchasesRouteImport.update({
+  id: '/purchases',
+  path: '/purchases',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedStockRoute = AuthenticatedStockRouteImport.update({
+  id: '/stock',
+  path: '/stock',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedTablesRoute = AuthenticatedTablesRouteImport.update({
+  id: '/tables',
+  path: '/tables',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedVendorsRoute = AuthenticatedVendorsRouteImport.update({
+  id: '/vendors',
+  path: '/vendors',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWaitersRoute = AuthenticatedWaitersRouteImport.update({
+  id: '/waiters',
+  path: '/waiters',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthenticatedBillSessionIdRoute =
   AuthenticatedBillSessionIdRouteImport.update({
     id: '/bill/$sessionId',
     path: '/bill/$sessionId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedOrderSessionIdRoute =
+  AuthenticatedOrderSessionIdRouteImport.update({
+    id: '/order/$sessionId',
+    path: '/order/$sessionId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
-  '/auth/forgot-password': typeof AuthForgotPasswordRoute
-  '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/auth': typeof AuthRouteWithChildren
   '/cash-config': typeof AuthenticatedCashConfigRoute
   '/cash-recon': typeof AuthenticatedCashReconRoute
   '/kds': typeof AuthenticatedKdsRoute
@@ -150,14 +148,14 @@ export interface FileRoutesByFullPath {
   '/users': typeof AuthenticatedUsersRoute
   '/vendors': typeof AuthenticatedVendorsRoute
   '/waiters': typeof AuthenticatedWaitersRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/bill/$sessionId': typeof AuthenticatedBillSessionIdRoute
   '/order/$sessionId': typeof AuthenticatedOrderSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/auth': typeof AuthRoute
-  '/auth/forgot-password': typeof AuthForgotPasswordRoute
-  '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/auth': typeof AuthRouteWithChildren
   '/cash-config': typeof AuthenticatedCashConfigRoute
   '/cash-recon': typeof AuthenticatedCashReconRoute
   '/kds': typeof AuthenticatedKdsRoute
@@ -171,6 +169,8 @@ export interface FileRoutesByTo {
   '/users': typeof AuthenticatedUsersRoute
   '/vendors': typeof AuthenticatedVendorsRoute
   '/waiters': typeof AuthenticatedWaitersRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/bill/$sessionId': typeof AuthenticatedBillSessionIdRoute
   '/order/$sessionId': typeof AuthenticatedOrderSessionIdRoute
 }
@@ -178,9 +178,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
-  '/auth': typeof AuthRoute
-  '/auth/forgot-password': typeof AuthForgotPasswordRoute
-  '/auth/reset-password': typeof AuthResetPasswordRoute
+  '/auth': typeof AuthRouteWithChildren
   '/_authenticated/cash-config': typeof AuthenticatedCashConfigRoute
   '/_authenticated/cash-recon': typeof AuthenticatedCashReconRoute
   '/_authenticated/kds': typeof AuthenticatedKdsRoute
@@ -194,6 +192,8 @@ export interface FileRoutesById {
   '/_authenticated/users': typeof AuthenticatedUsersRoute
   '/_authenticated/vendors': typeof AuthenticatedVendorsRoute
   '/_authenticated/waiters': typeof AuthenticatedWaitersRoute
+  '/auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/_authenticated/bill/$sessionId': typeof AuthenticatedBillSessionIdRoute
   '/_authenticated/order/$sessionId': typeof AuthenticatedOrderSessionIdRoute
 }
@@ -202,8 +202,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
-    | '/auth/forgot-password'
-    | '/auth/reset-password'
     | '/cash-config'
     | '/cash-recon'
     | '/kds'
@@ -217,14 +215,14 @@ export interface FileRouteTypes {
     | '/users'
     | '/vendors'
     | '/waiters'
+    | '/auth/forgot-password'
+    | '/auth/reset-password'
     | '/bill/$sessionId'
     | '/order/$sessionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
-    | '/auth/forgot-password'
-    | '/auth/reset-password'
     | '/cash-config'
     | '/cash-recon'
     | '/kds'
@@ -238,6 +236,8 @@ export interface FileRouteTypes {
     | '/users'
     | '/vendors'
     | '/waiters'
+    | '/auth/forgot-password'
+    | '/auth/reset-password'
     | '/bill/$sessionId'
     | '/order/$sessionId'
   id:
@@ -245,8 +245,6 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
-    | '/auth/forgot-password'
-    | '/auth/reset-password'
     | '/_authenticated/cash-config'
     | '/_authenticated/cash-recon'
     | '/_authenticated/kds'
@@ -260,6 +258,8 @@ export interface FileRouteTypes {
     | '/_authenticated/users'
     | '/_authenticated/vendors'
     | '/_authenticated/waiters'
+    | '/auth/forgot-password'
+    | '/auth/reset-password'
     | '/_authenticated/bill/$sessionId'
     | '/_authenticated/order/$sessionId'
   fileRoutesById: FileRoutesById
@@ -267,32 +267,16 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
-  AuthRoute: typeof AuthRoute
-  AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
-  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
+  AuthRoute: typeof AuthRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/forgot-password': {
-      id: '/auth/forgot-password'
-      path: '/auth/forgot-password'
-      fullPath: '/auth/forgot-password'
-      preLoaderRoute: typeof AuthForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/reset-password': {
-      id: '/auth/reset-password'
-      path: '/auth/reset-password'
-      fullPath: '/auth/reset-password'
-      preLoaderRoute: typeof AuthResetPasswordRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -302,88 +286,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/waiters': {
-      id: '/_authenticated/waiters'
-      path: '/waiters'
-      fullPath: '/waiters'
-      preLoaderRoute: typeof AuthenticatedWaitersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/vendors': {
-      id: '/_authenticated/vendors'
-      path: '/vendors'
-      fullPath: '/vendors'
-      preLoaderRoute: typeof AuthenticatedVendorsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/users': {
-      id: '/_authenticated/users'
-      path: '/users'
-      fullPath: '/users'
-      preLoaderRoute: typeof AuthenticatedUsersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/tables': {
-      id: '/_authenticated/tables'
-      path: '/tables'
-      fullPath: '/tables'
-      preLoaderRoute: typeof AuthenticatedTablesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/stock': {
-      id: '/_authenticated/stock'
-      path: '/stock'
-      fullPath: '/stock'
-      preLoaderRoute: typeof AuthenticatedStockRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/settings': {
-      id: '/_authenticated/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/reports': {
-      id: '/_authenticated/reports'
-      path: '/reports'
-      fullPath: '/reports'
-      preLoaderRoute: typeof AuthenticatedReportsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/purchases': {
-      id: '/_authenticated/purchases'
-      path: '/purchases'
-      fullPath: '/purchases'
-      preLoaderRoute: typeof AuthenticatedPurchasesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/more': {
-      id: '/_authenticated/more'
-      path: '/more'
-      fullPath: '/more'
-      preLoaderRoute: typeof AuthenticatedMoreRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/menu': {
-      id: '/_authenticated/menu'
-      path: '/menu'
-      fullPath: '/menu'
-      preLoaderRoute: typeof AuthenticatedMenuRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/kds': {
-      id: '/_authenticated/kds'
-      path: '/kds'
-      fullPath: '/kds'
-      preLoaderRoute: typeof AuthenticatedKdsRouteImport
+    '/_authenticated/cash-config': {
+      id: '/_authenticated/cash-config'
+      path: '/cash-config'
+      fullPath: '/cash-config'
+      preLoaderRoute: typeof AuthenticatedCashConfigRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/cash-recon': {
@@ -393,11 +307,102 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCashReconRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/cash-config': {
-      id: '/_authenticated/cash-config'
-      path: '/cash-config'
-      fullPath: '/cash-config'
-      preLoaderRoute: typeof AuthenticatedCashConfigRouteImport
+    '/_authenticated/kds': {
+      id: '/_authenticated/kds'
+      path: '/kds'
+      fullPath: '/kds'
+      preLoaderRoute: typeof AuthenticatedKdsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/menu': {
+      id: '/_authenticated/menu'
+      path: '/menu'
+      fullPath: '/menu'
+      preLoaderRoute: typeof AuthenticatedMenuRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/more': {
+      id: '/_authenticated/more'
+      path: '/more'
+      fullPath: '/more'
+      preLoaderRoute: typeof AuthenticatedMoreRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/purchases': {
+      id: '/_authenticated/purchases'
+      path: '/purchases'
+      fullPath: '/purchases'
+      preLoaderRoute: typeof AuthenticatedPurchasesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reports': {
+      id: '/_authenticated/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AuthenticatedReportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/stock': {
+      id: '/_authenticated/stock'
+      path: '/stock'
+      fullPath: '/stock'
+      preLoaderRoute: typeof AuthenticatedStockRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/tables': {
+      id: '/_authenticated/tables'
+      path: '/tables'
+      fullPath: '/tables'
+      preLoaderRoute: typeof AuthenticatedTablesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/users': {
+      id: '/_authenticated/users'
+      path: '/users'
+      fullPath: '/users'
+      preLoaderRoute: typeof AuthenticatedUsersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/vendors': {
+      id: '/_authenticated/vendors'
+      path: '/vendors'
+      fullPath: '/vendors'
+      preLoaderRoute: typeof AuthenticatedVendorsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/waiters': {
+      id: '/_authenticated/waiters'
+      path: '/waiters'
+      fullPath: '/waiters'
+      preLoaderRoute: typeof AuthenticatedWaitersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/auth/forgot-password': {
+      id: '/auth/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/auth/forgot-password'
+      preLoaderRoute: typeof AuthForgotPasswordRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/auth/reset-password': {
+      id: '/auth/reset-password'
+      path: '/reset-password'
+      fullPath: '/auth/reset-password'
+      preLoaderRoute: typeof AuthResetPasswordRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_authenticated/bill/$sessionId': {
+      id: '/_authenticated/bill/$sessionId'
+      path: '/bill/$sessionId'
+      fullPath: '/bill/$sessionId'
+      preLoaderRoute: typeof AuthenticatedBillSessionIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/order/$sessionId': {
@@ -405,13 +410,6 @@ declare module '@tanstack/react-router' {
       path: '/order/$sessionId'
       fullPath: '/order/$sessionId'
       preLoaderRoute: typeof AuthenticatedOrderSessionIdRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/bill/$sessionId': {
-      id: '/_authenticated/bill/$sessionId'
-      path: '/bill/$sessionId'
-      fullPath: '/bill/$sessionId'
-      preLoaderRoute: typeof AuthenticatedBillSessionIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
   }
@@ -456,12 +454,22 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface AuthRouteChildren {
+  AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
+  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
+}
+
+const AuthRouteChildren: AuthRouteChildren = {
+  AuthForgotPasswordRoute: AuthForgotPasswordRoute,
+  AuthResetPasswordRoute: AuthResetPasswordRoute,
+}
+
+const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
-  AuthRoute: AuthRoute,
-  AuthForgotPasswordRoute: AuthForgotPasswordRoute,
-  AuthResetPasswordRoute: AuthResetPasswordRoute,
+  AuthRoute: AuthRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

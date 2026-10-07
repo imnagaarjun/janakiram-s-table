@@ -14,6 +14,7 @@ import {
   CornerDownRight,
   GripVertical,
   ChevronUp,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/lib/db";
@@ -50,13 +51,9 @@ import {
 import { inr } from "@/lib/gst";
 import { vendorKind, type VendorKind } from "./vendorKind";
 import { mergeUnits } from "@/lib/units";
-
-interface ExpenseCategory {
-  id: string;
-  name: string;
-  display_order: number;
-  is_active: boolean;
-}
+import { ReorderControls, moved, swapped } from "./reorder";
+import { CategorySelect, type ExpenseCategory } from "./CategorySelect";
+import { CategoriesDialog, type CategoryUsage } from "./CategoriesDialog";
 
 interface Vendor {
   id: string;
@@ -87,75 +84,9 @@ interface VendorProduct {
   is_active: boolean;
 }
 
-// One tidy control: up/down arrows (work everywhere, incl. touch) and a drag handle (desktop).
-function ReorderControls({
-  canUp,
-  canDown,
-  onUp,
-  onDown,
-  onDragStart,
-  onDragEnd,
-}: {
-  canUp: boolean;
-  canDown: boolean;
-  onUp: () => void;
-  onDown: () => void;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragEnd: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-center shrink-0 -ml-1 text-muted-foreground">
-      <button
-        type="button"
-        onClick={onUp}
-        disabled={!canUp}
-        aria-label="Move up"
-        className="h-5 w-6 grid place-items-center rounded hover:bg-accent disabled:opacity-25 disabled:hover:bg-transparent"
-      >
-        <ChevronUp className="h-4 w-4" />
-      </button>
-      <span
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        title="Drag to reorder"
-        className="hidden md:grid h-5 w-6 place-items-center cursor-grab active:cursor-grabbing"
-      >
-        <GripVertical className="h-4 w-4" />
-      </span>
-      <button
-        type="button"
-        onClick={onDown}
-        disabled={!canDown}
-        aria-label="Move down"
-        className="h-5 w-6 grid place-items-center rounded hover:bg-accent disabled:opacity-25 disabled:hover:bg-transparent"
-      >
-        <ChevronDown className="h-4 w-4" />
-      </button>
-    </div>
-  );
-}
-
-// Moves `fromId` next to `toId` (after it when dragging down, before it when dragging up).
-function moved<T extends { id: string }>(list: T[], fromId: string, toId: string): T[] {
-  const fromIdx = list.findIndex((x) => x.id === fromId);
-  const toIdx0 = list.findIndex((x) => x.id === toId);
-  if (fromIdx < 0 || toIdx0 < 0 || fromIdx === toIdx0) return list;
-  const next = list.filter((x) => x.id !== fromId);
-  const toIdx = next.findIndex((x) => x.id === toId);
-  next.splice(fromIdx < toIdx0 ? toIdx + 1 : toIdx, 0, list[fromIdx]);
-  return next;
-}
-
-function swapped<T>(list: T[], i: number, j: number): T[] {
-  if (j < 0 || j >= list.length) return list;
-  const next = [...list];
-  [next[i], next[j]] = [next[j], next[i]];
-  return next;
-}
-
 export function VendorsPanel() {
-  const { profile } = useAuth();
+  const { profile, hasRole } = useAuth();
+  const isAdmin = hasRole("admin");
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [products, setProducts] = useState<VendorProduct[]>([]);
   const [cats, setCats] = useState<ExpenseCategory[]>([]);
@@ -165,6 +96,8 @@ export function VendorsPanel() {
   const [creating, setCreating] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Vendor | null>(null);
   const [query, setQuery] = useState("");
+  const [catFilter, setCatFilter] = useState<string>("all");
+  const [showCats, setShowCats] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
@@ -173,7 +106,7 @@ export function VendorsPanel() {
     const [v, p, c] = await Promise.all([
       db.from("vendors").select("*").order("display_order").order("name"),
       db.from("vendor_products").select("*").order("display_order").order("name"),
-      db.from("expense_categories").select("*").eq("is_active", true).order("display_order"),
+      db.from("expense_categories").select("*").order("display_order").order("name"),
     ]);
     if (v.error) toast.error(v.error.message);
     setVendors(v.data ?? []);
@@ -265,15 +198,29 @@ export function VendorsPanel() {
 
   if (!profile) return null;
 
+  const usage: CategoryUsage = {};
+  for (const c of cats) usage[c.id] = { vendors: 0, products: 0 };
+  for (const v of vendors)
+    if (v.default_category_id && usage[v.default_category_id])
+      usage[v.default_category_id].vendors++;
+  for (const p of products)
+    if (p.category_id && usage[p.category_id]) usage[p.category_id].products++;
+
   const q = query.trim().toLowerCase();
-  const visibleVendors = q
-    ? vendors.filter(
-        (v) =>
-          v.name.toLowerCase().includes(q) ||
-          products.some((p) => p.vendor_id === v.id && p.name.toLowerCase().includes(q)),
-      )
-    : vendors;
-  const multiIds = vendors.filter((v) => v.is_multi_product).map((v) => v.id);
+  const inCategory = (v: Vendor) =>
+    catFilter === "all" ||
+    (catFilter === "none"
+      ? !v.default_category_id && !products.some((p) => p.vendor_id === v.id && p.category_id)
+      : v.default_category_id === catFilter ||
+        products.some((p) => p.vendor_id === v.id && p.category_id === catFilter));
+  const visibleVendors = vendors.filter(
+    (v) =>
+      inCategory(v) &&
+      (!q ||
+        v.name.toLowerCase().includes(q) ||
+        products.some((p) => p.vendor_id === v.id && p.name.toLowerCase().includes(q))),
+  );
+  const multiIds = visibleVendors.filter((v) => v.is_multi_product).map((v) => v.id);
   const allOpen = multiIds.length > 0 && multiIds.every((id) => expanded.has(id));
 
   return (
@@ -288,7 +235,41 @@ export function VendorsPanel() {
             className="pl-9 min-h-[44px]"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+          {cats.length > 0 && (
+            <Select value={catFilter} onValueChange={setCatFilter}>
+              <SelectTrigger
+                className="min-h-[44px] w-full sm:w-[190px]"
+                aria-label="Filter by category"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {cats
+                  .filter((c) => c.is_active)
+                  .map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                <SelectItem value="none">No category</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          {isAdmin && (
+            <Button
+              variant="outline"
+              className="min-h-[44px] flex-1 sm:flex-none"
+              onClick={() => setShowCats(true)}
+            >
+              <Tag className="h-4 w-4 mr-2" />
+              Categories
+              <span className="ml-2 rounded-full bg-muted px-1.5 text-[11px] font-medium text-muted-foreground">
+                {cats.filter((c) => c.is_active).length}
+              </span>
+            </Button>
+          )}
           {multiIds.length > 0 && (
             <Button
               variant="outline"
@@ -343,9 +324,7 @@ export function VendorsPanel() {
             // a search hit on a product auto-opens its vendor
             const open =
               expanded.has(v.id) ||
-              (!!q &&
-                v.is_multi_product &&
-                vprods.some((p) => p.name.toLowerCase().includes(q)));
+              (!!q && v.is_multi_product && vprods.some((p) => p.name.toLowerCase().includes(q)));
             return (
               <div
                 key={v.id}
@@ -369,7 +348,7 @@ export function VendorsPanel() {
                 <span className={`absolute inset-y-0 left-0 w-1.5 ${kind.bar}`} aria-hidden />
 
                 <div className={`flex items-start gap-3 py-3 pl-4 pr-3 ${open ? kind.tint : ""}`}>
-                  {!q && !v.is_adhoc && (
+                  {!q && catFilter === "all" && !v.is_adhoc && (
                     <ReorderControls
                       canUp={regular.findIndex((x) => x.id === v.id) > 0}
                       canDown={regular.findIndex((x) => x.id === v.id) < regular.length - 1}
@@ -484,7 +463,8 @@ export function VendorsPanel() {
                     cats={cats}
                     kind={kind}
                     onReload={load}
-                    reorderable={!q}
+                    reorderable={!q && catFilter === "all"}
+                    canCreateCat={isAdmin}
                   />
                 )}
               </div>
@@ -498,6 +478,8 @@ export function VendorsPanel() {
           restaurantId={profile.restaurant_id}
           existing={editing}
           cats={cats}
+          canCreateCat={isAdmin}
+          onCatCreated={load}
           nextOrder={nextVendorOrder}
           onClose={() => {
             setCreating(false);
@@ -508,6 +490,16 @@ export function VendorsPanel() {
             setEditing(null);
             load();
           }}
+        />
+      )}
+
+      {showCats && isAdmin && (
+        <CategoriesDialog
+          restaurantId={profile.restaurant_id}
+          cats={cats}
+          usage={usage}
+          onClose={() => setShowCats(false)}
+          onChanged={load}
         />
       )}
 
@@ -537,6 +529,8 @@ function VendorEditor({
   existing,
   cats,
   nextOrder,
+  canCreateCat,
+  onCatCreated,
   onClose,
   onSaved,
 }: {
@@ -544,6 +538,8 @@ function VendorEditor({
   existing: Vendor | null;
   cats: ExpenseCategory[];
   nextOrder: number;
+  canCreateCat: boolean;
+  onCatCreated: () => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -605,22 +601,14 @@ function VendorEditor({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="block mb-1.5">Default category</Label>
-              <Select
-                value={categoryId ?? "__none"}
-                onValueChange={(v) => setCategoryId(v === "__none" ? null : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">— None —</SelectItem>
-                  {cats.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategorySelect
+                value={categoryId}
+                onChange={setCategoryId}
+                cats={cats}
+                canCreate={canCreateCat}
+                restaurantId={restaurantId}
+                onCreated={onCatCreated}
+              />
             </div>
             <div>
               <Label className="block mb-1.5">Phone</Label>
@@ -686,6 +674,7 @@ function ProductsEditor({
   kind,
   onReload,
   reorderable,
+  canCreateCat,
 }: {
   restaurantId: string;
   vendor: Vendor;
@@ -695,6 +684,7 @@ function ProductsEditor({
   kind: VendorKind;
   onReload: () => void;
   reorderable: boolean;
+  canCreateCat: boolean;
 }) {
   const [dragPid, setDragPid] = useState<string | null>(null);
   const [overPid, setOverPid] = useState<string | null>(null);
@@ -885,6 +875,8 @@ function ProductsEditor({
           existing={editing}
           units={allUnits}
           cats={cats}
+          canCreateCat={canCreateCat}
+          onCatCreated={onReload}
           nextOrder={Math.max(-1, ...products.map((p) => p.display_order)) + 1}
           onClose={() => {
             setCreating(false);
@@ -926,6 +918,8 @@ function ProductEditor({
   units,
   cats,
   nextOrder,
+  canCreateCat,
+  onCatCreated,
   onClose,
   onSaved,
 }: {
@@ -935,6 +929,8 @@ function ProductEditor({
   units: string[];
   cats: ExpenseCategory[];
   nextOrder: number;
+  canCreateCat: boolean;
+  onCatCreated: () => void;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1085,22 +1081,14 @@ function ProductEditor({
             </div>
             <div>
               <Label className="block mb-1.5">Category</Label>
-              <Select
-                value={categoryId ?? "__none"}
-                onValueChange={(v) => setCategoryId(v === "__none" ? null : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">— None —</SelectItem>
-                  {cats.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CategorySelect
+                value={categoryId}
+                onChange={setCategoryId}
+                cats={cats}
+                canCreate={canCreateCat}
+                restaurantId={restaurantId}
+                onCreated={onCatCreated}
+              />
             </div>
           </div>
 
