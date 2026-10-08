@@ -400,6 +400,11 @@ function SectionPane({
       db.rpc("cash_expense_total", { _business_date: businessDate, _section_key: sectionKey }),
     ]);
 
+    if (cashExpRes.error) {
+      toast.error(
+        "Cash expenses could not be loaded. The latest database update may not be applied yet.",
+      );
+    }
     const r = (reconRes.data ?? null) as Reconciliation | null;
     const a = ((autoRes.data ?? [])[0] ?? {}) as {
       sales_total?: number;
