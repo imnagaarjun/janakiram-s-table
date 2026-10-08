@@ -7,11 +7,11 @@ export const Route = createFileRoute("/_authenticated/cash-recon")({ component: 
 function Page() {
   return (
     <AccessGuard perm="cash-recon:view">
-      <div className="p-4 md:p-6 max-w-5xl mx-auto">
+      <div className="p-4 md:p-6 max-w-6xl mx-auto">
         <h1 className="text-2xl font-bold mb-1">Daily cash reconciliation</h1>
         <p className="text-sm text-muted-foreground mb-4">
-          Close the day per section. Auto figures come from settled bills; manual lines
-          (opening, drawings, donations) and denomination counts are entered here.
+          Count each cash point and tally it, then check the day. Auto figures fill in by
+          themselves; manual lines (opening, drawings, donations) and the cash count are typed here.
         </p>
         <DailyCashReconScreen />
       </div>

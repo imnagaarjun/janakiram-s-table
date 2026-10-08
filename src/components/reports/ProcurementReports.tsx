@@ -402,6 +402,7 @@ export function CashReconArchive({ range }: { range: DateRange }) {
   const [counts, setCounts] = useState<DenomCount[]>([]);
   const [lines, setLines] = useState<FlowLine[]>([]);
   const [denoms, setDenoms] = useState<DenomCfg[]>([]);
+  const [extraLines, setExtraLines] = useState<{ reconciliation_id: string; sign: string; amount: number }[]>([]);
   const [autoMap, setAutoMap] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
@@ -413,11 +414,12 @@ export function CashReconArchive({ range }: { range: DateRange }) {
         .gte("business_date", from).lte("business_date", to).order("business_date");
       const recList = (reconsR.data ?? []) as Recon[];
       const ids = recList.map((r) => r.id);
-      const [valsR, cntR, flR, dnR] = await Promise.all([
+      const [valsR, cntR, flR, dnR, exR] = await Promise.all([
         ids.length ? db.from("cash_recon_values").select("reconciliation_id,cashflow_line_id,manual_value").in("reconciliation_id", ids) : Promise.resolve({ data: [] }),
         ids.length ? db.from("denomination_counts").select("reconciliation_id,denomination_id,count").in("reconciliation_id", ids) : Promise.resolve({ data: [] }),
         db.from("cashflow_lines").select("id,section_key,label,sign,source"),
         db.from("denomination_config").select("id,value,label"),
+        ids.length ? db.from("cash_recon_extra_lines").select("reconciliation_id,sign,amount").in("reconciliation_id", ids) : Promise.resolve({ data: [] }),
       ]);
       if (!active) return;
       setRecons(recList);
@@ -425,6 +427,7 @@ export function CashReconArchive({ range }: { range: DateRange }) {
       setCounts((cntR.data ?? []) as DenomCount[]);
       setLines((flR.data ?? []) as FlowLine[]);
       setDenoms((dnR.data ?? []) as DenomCfg[]);
+      setExtraLines((exR.data ?? []) as { reconciliation_id: string; sign: string; amount: number }[]);
 
       // Pull auto sales per (date, section) via section_finance RPC
       const days = istDaysIn(range);
@@ -461,6 +464,9 @@ export function CashReconArchive({ range }: { range: DateRange }) {
       else if (ln.source === "auto_cash_expense") amt = Number(v.manual_value); // covered by purchase cash
       const signed = ln.sign === "subtract" ? -amt : amt;
       expected += signed;
+    }
+    for (const x of extraLines.filter((e) => e.reconciliation_id === r.id)) {
+      expected += x.sign === "subtract" ? -Number(x.amount) : Number(x.amount);
     }
     let counted = 0;
     for (const c of counts.filter((x) => x.reconciliation_id === r.id)) {
