@@ -210,7 +210,8 @@ function CashflowTemplateEditor() {
       </div>
 
       <p className="text-xs text-muted-foreground mb-3">
-        Order the lines as they should appear on the daily reconciliation. Manual lines are typed each day; Auto lines fill in by themselves from the source you search and pick.
+        Order the lines as they should appear on the daily reconciliation. Manual lines are typed
+        each day; Auto lines fill in by themselves from the source you search and pick.
       </p>
 
       {sectionLines.length === 0 ? (
@@ -244,17 +245,20 @@ function CashflowTemplateEditor() {
               </div>
               <div className="col-span-6 sm:col-span-3">
                 <Input
-                  value={l.label}
-                  onChange={(e) =>
-                    setLines((arr) =>
-                      arr.map((x) => (x.id === l.id ? { ...x, label: e.target.value } : x)),
-                    )
-                  }
-                  onBlur={(e) =>
-                    e.target.value !== l.label
-                      ? updateLine(l.id, { label: e.target.value.trim() || "Line" })
-                      : undefined
-                  }
+                  key={`${l.id}:${l.label}`}
+                  defaultValue={l.label}
+                  maxLength={40}
+                  aria-label={`Line name ${idx + 1}`}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim().replace(/\s+/g, " ");
+                    if (v === l.label) return;
+                    if (!v) {
+                      e.target.value = l.label;
+                      return;
+                    }
+                    updateLine(l.id, { label: v });
+                  }}
                   className="h-9"
                 />
               </div>
