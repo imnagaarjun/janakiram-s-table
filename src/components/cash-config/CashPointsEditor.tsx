@@ -32,6 +32,7 @@ interface CashPoint {
   label: string | null;
   display_order: number;
   is_active: boolean;
+  is_default?: boolean;
 }
 
 const name = (c: CashPoint) => c.label ?? c.key;
@@ -93,15 +94,13 @@ export function CashPointsEditor() {
         .eq("section_key", copyFrom)
         .order("display_order");
       if (src && src.length > 0) {
-        const { error: e2 } = await db
-          .from("cashflow_lines")
-          .insert(
-            src.map((l: Record<string, unknown>) => ({
-              ...l,
-              restaurant_id: profile.restaurant_id,
-              section_key: key,
-            })),
-          );
+        const { error: e2 } = await db.from("cashflow_lines").insert(
+          src.map((l: Record<string, unknown>) => ({
+            ...l,
+            restaurant_id: profile.restaurant_id,
+            section_key: key,
+          })),
+        );
         if (e2) toast.error(`Cash point added, but copying lines failed: ${e2.message}`);
       }
     }
@@ -130,9 +129,25 @@ export function CashPointsEditor() {
       toast.error("Keep at least one cash point on");
       return;
     }
-    const { error } = await db.from("cash_sections").update({ is_active: v }).eq("id", p.id);
+    const { error } = await db
+      .from("cash_sections")
+      .update(v ? { is_active: v } : { is_active: v, is_default: false })
+      .eq("id", p.id);
     if (error) toast.error(error.message);
     else load();
+  }
+
+  async function makeDefault(p: CashPoint) {
+    const { error: e1 } = await db
+      .from("cash_sections")
+      .update({ is_default: false })
+      .eq("is_default", true);
+    const { error } = e1
+      ? { error: e1 }
+      : await db.from("cash_sections").update({ is_default: true }).eq("id", p.id);
+    if (error) toast.error(error.message);
+    else toast.success(`“${name(p)}” is now the default`);
+    load();
   }
 
   async function move(i: number, dir: -1 | 1) {
@@ -192,7 +207,8 @@ export function CashPointsEditor() {
     setConfirmDel(null);
   }
 
-  const defaultId = points.find((p) => p.is_active)?.id;
+  const defaultId =
+    points.find((p) => p.is_active && p.is_default)?.id ?? points.find((p) => p.is_active)?.id;
 
   if (loading)
     return (
@@ -329,6 +345,17 @@ export function CashPointsEditor() {
             </div>
             {editId !== p.id && (
               <>
+                {p.is_active && p.id !== defaultId && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 px-2 text-xs text-muted-foreground"
+                    onClick={() => makeDefault(p)}
+                    aria-label={`Make ${name(p)} the default`}
+                  >
+                    Make default
+                  </Button>
+                )}
                 <Switch
                   checked={p.is_active}
                   onCheckedChange={(v) => setActive(p, v)}
@@ -361,8 +388,8 @@ export function CashPointsEditor() {
         ))}
       </div>
       <p className="text-[11px] text-muted-foreground">
-        The first active cash point is the default: cash paid to vendors with no cash point chosen
-        is deducted there.
+        The default cash point receives cash paid to vendors that have no cash point chosen. Change
+        it with “Make default”.
       </p>
 
       <AlertDialog open={!!confirmDel} onOpenChange={(o) => !o && setConfirmDel(null)}>

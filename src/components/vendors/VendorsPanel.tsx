@@ -553,16 +553,20 @@ function VendorEditor({
   const [isFixedAmount, setIsFixedAmount] = useState(existing?.is_fixed_amount ?? false);
   const [isActive, setIsActive] = useState(existing?.is_active ?? true);
   const [saving, setSaving] = useState(false);
-  const [cashPoints, setCashPoints] = useState<{ key: string; label: string | null }[]>([]);
+  const [cashPoints, setCashPoints] = useState<
+    { key: string; label: string | null; is_default?: boolean }[]
+  >([]);
   const [cashKey, setCashKey] = useState<string>(existing?.cash_section_key ?? "__default");
 
   useEffect(() => {
     db.from("cash_sections")
-      .select("key,label")
+      .select("key,label,is_default")
       .eq("is_active", true)
       .order("display_order")
       .then(({ data }: { data: unknown }) =>
-        setCashPoints((data ?? []) as { key: string; label: string | null }[]),
+        setCashPoints(
+          (data ?? []) as { key: string; label: string | null; is_default?: boolean }[],
+        ),
       );
   }, []);
 
@@ -640,7 +644,10 @@ function VendorEditor({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__default">
-                    Default ({cashPoints[0].label ?? cashPoints[0].key})
+                    Default (
+                    {(cashPoints.find((c) => c.is_default) ?? cashPoints[0]).label ??
+                      (cashPoints.find((c) => c.is_default) ?? cashPoints[0]).key}
+                    )
                   </SelectItem>
                   {cashPoints.map((c) => (
                     <SelectItem key={c.key} value={c.key}>
