@@ -67,6 +67,7 @@ interface Vendor {
   is_active: boolean;
   display_order: number;
   is_adhoc?: boolean;
+  cash_section_key?: string | null;
 }
 
 interface VendorProduct {
@@ -552,6 +553,18 @@ function VendorEditor({
   const [isFixedAmount, setIsFixedAmount] = useState(existing?.is_fixed_amount ?? false);
   const [isActive, setIsActive] = useState(existing?.is_active ?? true);
   const [saving, setSaving] = useState(false);
+  const [cashPoints, setCashPoints] = useState<{ key: string; label: string | null }[]>([]);
+  const [cashKey, setCashKey] = useState<string>(existing?.cash_section_key ?? "__default");
+
+  useEffect(() => {
+    db.from("cash_sections")
+      .select("key,label")
+      .eq("is_active", true)
+      .order("display_order")
+      .then(({ data }: { data: unknown }) =>
+        setCashPoints((data ?? []) as { key: string; label: string | null }[]),
+      );
+  }, []);
 
   async function save() {
     if (!name.trim()) {
@@ -559,6 +572,7 @@ function VendorEditor({
       return;
     }
     setSaving(true);
+    const cashChanged = cashKey !== (existing?.cash_section_key ?? "__default");
     const payload = {
       restaurant_id: restaurantId,
       name: name.trim(),
@@ -567,6 +581,7 @@ function VendorEditor({
       is_multi_product: isMulti,
       is_fixed_amount: isMulti ? false : isFixedAmount,
       is_active: isActive,
+      ...(cashChanged ? { cash_section_key: cashKey === "__default" ? null : cashKey } : {}),
     };
     if (existing) {
       const { error } = await db.from("vendors").update(payload).eq("id", existing.id);
@@ -615,6 +630,31 @@ function VendorEditor({
               <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
           </div>
+
+          {cashPoints.length > 1 && (
+            <div>
+              <Label className="block mb-1.5">Cash paid from</Label>
+              <Select value={cashKey} onValueChange={setCashKey}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default">
+                    Default ({cashPoints[0].label ?? cashPoints[0].key})
+                  </SelectItem>
+                  {cashPoints.map((c) => (
+                    <SelectItem key={c.key} value={c.key}>
+                      {c.label ?? c.key}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Cash paid to this vendor is deducted in this cash point in Daily cash
+                reconciliation.
+              </p>
+            </div>
+          )}
 
           <div className="rounded-xl border border-border p-3 flex items-center justify-between gap-3">
             <div>

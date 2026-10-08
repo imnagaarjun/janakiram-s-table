@@ -15,12 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,16 +30,12 @@ import { inr } from "@/lib/gst";
 import { cn } from "@/lib/utils";
 
 type Source =
-  | "manual"
-  | "auto_sales"
-  | "auto_gpay"
-  | "auto_card"
-  | "auto_swiggy"
-  | "auto_cash_expense";
+  "manual" | "auto_sales" | "auto_gpay" | "auto_card" | "auto_swiggy" | "auto_cash_expense";
 
 interface Section {
   id: string;
   key: string;
+  label: string | null;
   display_order: number;
 }
 interface CashflowLine {
@@ -157,7 +148,7 @@ export function DailyCashReconScreen() {
         <TabsList className="mb-4 flex-wrap h-auto">
           {sections.map((s) => (
             <TabsTrigger key={s.id} value={s.key}>
-              {s.key}
+              {s.label ?? s.key}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -168,6 +159,7 @@ export function DailyCashReconScreen() {
                 key={`${businessDate}-${s.key}`}
                 businessDate={businessDate}
                 sectionKey={s.key}
+                sectionLabel={s.label ?? s.key}
                 canFinalise={canFinalise}
                 canReopen={canReopen}
               />
@@ -182,11 +174,13 @@ export function DailyCashReconScreen() {
 function SectionPane({
   businessDate,
   sectionKey,
+  sectionLabel,
   canFinalise,
   canReopen,
 }: {
   businessDate: string;
   sectionKey: string;
+  sectionLabel: string;
   canFinalise: boolean;
   canReopen: boolean;
 }) {
@@ -218,11 +212,7 @@ function SectionPane({
         .eq("section_key", sectionKey)
         .eq("is_active", true)
         .order("display_order"),
-      db
-        .from("denomination_config")
-        .select("*")
-        .eq("is_active", true)
-        .order("display_order"),
+      db.from("denomination_config").select("*").eq("is_active", true).order("display_order"),
       db
         .from("cash_reconciliations")
         .select("*")
@@ -233,7 +223,7 @@ function SectionPane({
         _business_date: businessDate,
         _section_key: sectionKey,
       }),
-      db.rpc("cash_expense_total", { _business_date: businessDate }),
+      db.rpc("cash_expense_total", { _business_date: businessDate, _section_key: sectionKey }),
     ]);
 
     const ls = (linesRes.data ?? []) as CashflowLine[];
@@ -315,8 +305,12 @@ function SectionPane({
     }
   }
 
+  // A finalised day keeps the cash-expense figure stored when it was saved; drafts follow live data.
   function lineValue(l: CashflowLine): number {
-    return l.source === "manual" ? num(manualValues[l.id] ?? "") : autoValue(l.source);
+    if (l.source === "manual") return num(manualValues[l.id] ?? "");
+    if (isFinalised && l.source === "auto_cash_expense" && manualValues[l.id] !== undefined)
+      return num(manualValues[l.id]);
+    return autoValue(l.source);
   }
 
   const expected = useMemo(() => {
@@ -413,12 +407,13 @@ function SectionPane({
         <div className="px-4 py-2.5 border-b border-border bg-muted/30">
           <div className="font-semibold text-sm">Cash-flow tally</div>
           <div className="text-[11px] text-muted-foreground">
-            Auto lines pull live from settled bills and cash purchases. Manual lines are typed.
+            Auto lines fill in by themselves (and are kept once the day is finalised). Manual lines
+            are typed.
           </div>
         </div>
         {lines.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground text-sm">
-            No cash-flow lines configured for {sectionKey}. Set them up in Cash reconciliation
+            No cash-flow lines configured for {sectionLabel}. Set them up in Cash reconciliation
             setup.
           </div>
         ) : (
@@ -427,10 +422,7 @@ function SectionPane({
               const isAuto = l.source !== "manual";
               const val = lineValue(l);
               return (
-                <div
-                  key={l.id}
-                  className="grid grid-cols-12 gap-2 items-center px-3 py-2.5"
-                >
+                <div key={l.id} className="grid grid-cols-12 gap-2 items-center px-3 py-2.5">
                   <div className="col-span-7 sm:col-span-6 flex items-center gap-2 min-w-0">
                     <Badge
                       variant="outline"
@@ -460,9 +452,7 @@ function SectionPane({
                         type="number"
                         inputMode="decimal"
                         value={manualValues[l.id] ?? ""}
-                        onChange={(e) =>
-                          setManualValues((m) => ({ ...m, [l.id]: e.target.value }))
-                        }
+                        onChange={(e) => setManualValues((m) => ({ ...m, [l.id]: e.target.value }))}
                         disabled={isFinalised}
                         placeholder="0"
                         className="h-9 text-right tabular-nums"
@@ -473,9 +463,7 @@ function SectionPane({
                     {!isAuto && (
                       <Input
                         value={notes[l.id] ?? ""}
-                        onChange={(e) =>
-                          setNotes((m) => ({ ...m, [l.id]: e.target.value }))
-                        }
+                        onChange={(e) => setNotes((m) => ({ ...m, [l.id]: e.target.value }))}
                         disabled={isFinalised}
                         placeholder="note (optional)"
                         className="h-9 text-xs"
@@ -521,9 +509,7 @@ function SectionPane({
                       type="number"
                       inputMode="decimal"
                       value={counts[d.id] ?? ""}
-                      onChange={(e) =>
-                        setCounts((m) => ({ ...m, [d.id]: e.target.value }))
-                      }
+                      onChange={(e) => setCounts((m) => ({ ...m, [d.id]: e.target.value }))}
                       disabled={isFinalised}
                       placeholder={d.value === null ? "₹" : "0"}
                       className="h-9 text-right tabular-nums"
@@ -552,17 +538,11 @@ function SectionPane({
             <Stat
               label={variance === 0 ? "Tally" : variance > 0 ? "Excess" : "Short"}
               value={variance === 0 ? "✓" : inr(Math.abs(variance))}
-              tone={
-                variance === 0 ? "ok" : variance > 0 ? "warn" : "bad"
-              }
+              tone={variance === 0 ? "ok" : variance > 0 ? "warn" : "bad"}
             />
           </div>
           <div className="flex gap-2 justify-end">
-            <Button
-              variant="outline"
-              onClick={() => save(false)}
-              disabled={saving || isFinalised}
-            >
+            <Button variant="outline" onClick={() => save(false)} disabled={saving || isFinalised}>
               {saving ? (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
               ) : (
@@ -571,10 +551,7 @@ function SectionPane({
               Save draft
             </Button>
             {canFinalise && (
-              <Button
-                onClick={() => setConfirmFinalise(true)}
-                disabled={saving || isFinalised}
-              >
+              <Button onClick={() => setConfirmFinalise(true)} disabled={saving || isFinalised}>
                 <Lock className="h-4 w-4 mr-1" /> Finalise
               </Button>
             )}
@@ -587,10 +564,10 @@ function SectionPane({
           <AlertDialogHeader>
             <AlertDialogTitle>Finalise reconciliation?</AlertDialogTitle>
             <AlertDialogDescription>
-              {sectionKey} · {businessDate} · Variance{" "}
+              {sectionLabel} · {businessDate} · Variance{" "}
               <strong>{variance === 0 ? "Tally" : inr(Math.abs(variance))}</strong>{" "}
-              {variance > 0 ? "(Excess)" : variance < 0 ? "(Short)" : ""}. Once finalised this
-              day's cash-up is locked; only a manager can reopen it.
+              {variance > 0 ? "(Excess)" : variance < 0 ? "(Short)" : ""}. Once finalised this day's
+              cash-up is locked; only a manager can reopen it.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -27,19 +27,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { AUTO_SOURCES, type CashSource } from "@/lib/cash-sources";
+import { SourcePicker } from "./SourcePicker";
+import { CashPointsEditor } from "./CashPointsEditor";
 
 type Sign = "add" | "subtract";
 type Source =
-  | "manual"
-  | "auto_sales"
-  | "auto_gpay"
-  | "auto_card"
-  | "auto_swiggy"
-  | "auto_cash_expense";
+  "manual" | "auto_sales" | "auto_gpay" | "auto_card" | "auto_swiggy" | "auto_cash_expense";
 
 interface Section {
   id: string;
   key: string;
+  label: string | null;
   display_order: number;
 }
 
@@ -61,25 +60,26 @@ interface Denomination {
   is_active: boolean;
 }
 
-const SOURCE_LABELS: Record<Source, string> = {
-  manual: "Manual (cashier types)",
-  auto_sales: "Auto · Section Sales",
-  auto_gpay: "Auto · GPay",
-  auto_card: "Auto · Card",
-  auto_swiggy: "Auto · Swiggy",
-  auto_cash_expense: "Auto · Cash Expense",
-};
-
 export function CashConfigScreen() {
+  const { hasRole } = useAuth();
+  const isAdmin = hasRole("admin");
   return (
-    <Tabs defaultValue="cashflow">
+    <Tabs defaultValue={isAdmin ? "points" : "denominations"}>
       <TabsList className="mb-4">
-        <TabsTrigger value="cashflow">Cash-flow template</TabsTrigger>
+        {isAdmin && <TabsTrigger value="points">Cash points</TabsTrigger>}
+        {isAdmin && <TabsTrigger value="cashflow">Lines (+ / −)</TabsTrigger>}
         <TabsTrigger value="denominations">Denominations</TabsTrigger>
       </TabsList>
-      <TabsContent value="cashflow" className="mt-0">
-        <CashflowTemplateEditor />
-      </TabsContent>
+      {isAdmin && (
+        <TabsContent value="points" className="mt-0">
+          <CashPointsEditor />
+        </TabsContent>
+      )}
+      {isAdmin && (
+        <TabsContent value="cashflow" className="mt-0">
+          <CashflowTemplateEditor />
+        </TabsContent>
+      )}
       <TabsContent value="denominations" className="mt-0">
         <DenominationsEditor />
       </TabsContent>
@@ -97,11 +97,7 @@ function CashflowTemplateEditor() {
   const load = useCallback(async () => {
     setLoading(true);
     const [s, l] = await Promise.all([
-      db
-        .from("cash_sections")
-        .select("*")
-        .eq("is_active", true)
-        .order("display_order"),
+      db.from("cash_sections").select("*").eq("is_active", true).order("display_order"),
       db.from("cashflow_lines").select("*").order("display_order"),
     ]);
     setSections(s.data ?? []);
@@ -154,10 +150,7 @@ function CashflowTemplateEditor() {
       return;
     }
     if ((count ?? 0) > 0) {
-      const { error } = await db
-        .from("cashflow_lines")
-        .update({ is_active: false })
-        .eq("id", id);
+      const { error } = await db.from("cashflow_lines").update({ is_active: false }).eq("id", id);
       if (error) toast.error(error.message);
       else {
         toast.success("Line has reconciliation history — deactivated instead.");
@@ -197,7 +190,7 @@ function CashflowTemplateEditor() {
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="flex-1 min-w-[240px]">
-          <Label className="block text-xs mb-1">Section</Label>
+          <Label className="block text-xs mb-1">Cash point</Label>
           <Select value={sectionKey} onValueChange={setSectionKey}>
             <SelectTrigger className="w-full sm:w-[240px]">
               <SelectValue />
@@ -205,7 +198,7 @@ function CashflowTemplateEditor() {
             <SelectContent>
               {sections.map((s) => (
                 <SelectItem key={s.id} value={s.key}>
-                  {s.key}
+                  {s.label ?? s.key}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -217,8 +210,7 @@ function CashflowTemplateEditor() {
       </div>
 
       <p className="text-xs text-muted-foreground mb-3">
-        Order the lines as they should appear on the daily reconciliation. Auto sources are filled
-        from sales/payments; Manual lines are typed by the cashier each day.
+        Order the lines as they should appear on the daily reconciliation. Manual lines are typed each day; Auto lines fill in by themselves from the source you search and pick.
       </p>
 
       {sectionLines.length === 0 ? (
@@ -250,7 +242,7 @@ function CashflowTemplateEditor() {
                   <ArrowDown className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <div className="col-span-6 sm:col-span-4">
+              <div className="col-span-6 sm:col-span-3">
                 <Input
                   value={l.label}
                   onChange={(e) =>
@@ -292,22 +284,40 @@ function CashflowTemplateEditor() {
                   </Button>
                 </div>
               </div>
-              <div className="col-span-3 sm:col-span-3">
-                <Select
-                  value={l.source}
-                  onValueChange={(v) => updateLine(l.id, { source: v as Source })}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(SOURCE_LABELS) as Source[]).map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {SOURCE_LABELS[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="col-span-3 sm:col-span-4 flex items-center gap-1">
+                <div className="flex rounded-md border border-border overflow-hidden shrink-0">
+                  {(["manual", "auto"] as const).map((m) => {
+                    const on = (l.source === "manual") === (m === "manual");
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => {
+                          if (m === "manual" && l.source !== "manual")
+                            updateLine(l.id, { source: "manual" });
+                          if (m === "auto" && l.source === "manual")
+                            updateLine(l.id, { source: AUTO_SOURCES.find((a) => a.available)!.id });
+                        }}
+                        className={cn(
+                          "h-9 px-2 text-xs font-medium",
+                          on
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-surface text-muted-foreground",
+                        )}
+                      >
+                        {m === "manual" ? "Manual" : "Auto"}
+                      </button>
+                    );
+                  })}
+                </div>
+                {l.source !== "manual" && (
+                  <div className="min-w-0 flex-1">
+                    <SourcePicker
+                      value={l.source}
+                      onChange={(v) => updateLine(l.id, { source: v })}
+                    />
+                  </div>
+                )}
               </div>
               <div className="col-span-6 sm:col-span-1 flex items-center gap-1.5">
                 <Switch
@@ -349,10 +359,7 @@ function DenominationsEditor() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await db
-      .from("denomination_config")
-      .select("*")
-      .order("display_order");
+    const { data, error } = await db.from("denomination_config").select("*").order("display_order");
     if (error) toast.error(error.message);
     setRows(data ?? []);
     setLoading(false);
